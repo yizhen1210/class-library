@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Search, X, ChevronLeft, Sparkles, Folder } from "lucide-react";
+import { Search, X, ChevronLeft, BookOpen, Scroll } from "lucide-react";
 import BookCard from "./BookCard";
 import PopularRanking from "./PopularRanking";
 import { naturalCompare } from "../../utils/textUtils";
@@ -11,17 +11,22 @@ export default function BookGrid({
   students,
   records,
   pickingStudentId,
+  selectedCategory,
+  setSelectedCategory,
   onCancelPicking,
   onSelectBookToBorrow,
   onDirectBorrowForStudent
 }) {
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState(null);
 
   const pickingStudent = students.find((s) => s.id === pickingStudentId);
 
   // 計算動態配色對應表
-  const categoryNames = [...new Set([...categories.map((c) => c.name), ...books.map((b) => b.category)])];
+  const defaultCategoryNames = categories.map((c) => c.name);
+  const allCategoryNames = [
+    ...new Set([...defaultCategoryNames, ...books.map((b) => b.category)])
+  ];
+
   const sortedAllBooks = [...books].sort(
     (a, b) => naturalCompare(a.category, b.category) || naturalCompare(a.title, b.title)
   );
@@ -37,29 +42,49 @@ export default function BookGrid({
     return colorMap[book.id] || book.cover;
   };
 
+  // 格式化分類標題
+  const formatCategoryName = (name) => {
+    const parenIndex = name.indexOf("（");
+    if (name.includes("：") && parenIndex !== -1) {
+      const [prefix, rest] = name.split("：");
+      const main = rest.slice(0, rest.indexOf("（"));
+      const range = rest.slice(rest.indexOf("（"));
+      return (
+        <>
+          <span className="block">{prefix}：</span>
+          <span className="block">
+            {main}
+            <span className="sm:block">{range}</span>
+          </span>
+        </>
+      );
+    }
+    return name;
+  };
+
   // 搜尋過濾
-  const cleanSearch = searchQuery.toLowerCase().replace(/[《》「」\s]/g, "");
+  const cleanSearch = (searchQuery || "").toLowerCase().replace(/[《》「」\s]/g, "");
   const searchResults = cleanSearch
     ? books
-        .filter(
-          (b) =>
-            b.title.toLowerCase().replace(/[《》「」\s]/g, "").includes(cleanSearch) ||
-            b.author.toLowerCase().replace(/[《》「」\s]/g, "").includes(cleanSearch)
-        )
+        .filter((b) => {
+          const cleanTitle = (b.title || "").toLowerCase().replace(/[《》「」\s]/g, "");
+          const cleanAuthor = (b.author || "").toLowerCase().replace(/[《》「」\s]/g, "");
+          return cleanTitle.includes(cleanSearch) || cleanAuthor.includes(cleanSearch);
+        })
         .sort((a, b) => naturalCompare(a.title, b.title))
     : [];
 
-  // 人氣排行榜計算
-  const borrowCounts = {};
+  // 人氣排行榜計算 (依借閱不重複學生數排序，取前 5)
+  const borrowSets = {};
   records.forEach((r) => {
     if (r.bookId && r.studentId) {
-      if (!borrowCounts[r.bookId]) borrowCounts[r.bookId] = new Set();
-      borrowCounts[r.bookId].add(r.studentId);
+      if (!borrowSets[r.bookId]) borrowSets[r.bookId] = new Set();
+      borrowSets[r.bookId].add(r.studentId);
     }
   });
 
   const topBooks = books
-    .map((b) => ({ book: b, count: borrowCounts[b.id] ? borrowCounts[b.id].size : 0 }))
+    .map((b) => ({ book: b, count: borrowSets[b.id] ? borrowSets[b.id].size : 0 }))
     .filter((b) => b.count > 0)
     .sort((a, b) => b.count - a.count || naturalCompare(a.book.title, b.book.title))
     .slice(0, 5);
@@ -72,40 +97,25 @@ export default function BookGrid({
     }
   };
 
-  const formatCategoryPill = (catName) => {
-    const parenIndex = catName.indexOf("（");
-    if (catName.includes("：") && parenIndex !== -1) {
-      const [prefix, rest] = catName.split("：");
-      const title = rest.slice(0, rest.indexOf("（"));
-      const range = rest.slice(rest.indexOf("（"));
-      return (
-        <>
-          <span className="block">{prefix}：</span>
-          <span className="block">
-            {title}
-            <span className="sm:block">{range}</span>
-          </span>
-        </>
-      );
-    }
-    return catName;
-  };
-
   return (
-    <div id="library-top" className="animate-in fade-in duration-500">
-      {/* 挑書中橫幅 (由學徒詳情頁跳轉而來) */}
-      {pickingStudentId && (
+    <div
+      id="library-top"
+      className="animate-in fade-in duration-500"
+      style={pickingStudentId ? { paddingTop: "calc(env(safe-area-inset-top) + 0.5rem)" } : undefined}
+    >
+      {/* 正在為學徒挑選魔導書橫幅 */}
+      {pickingStudent && (
         <div className="mb-8 glass-panel border-2 border-indigo-500/50 rounded-2xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between shadow-[0_0_30px_rgba(79,70,229,0.2)] animate-pulse-slow gap-4">
           <div className="flex items-center">
             <span className="text-4xl sm:text-5xl mr-4 drop-shadow-md">
-              {pickingStudent?.avatar}
+              {pickingStudent.avatar}
             </span>
             <div>
               <h3 className="text-indigo-200 font-bold text-lg sm:text-xl tracking-wide">
-                正在為 {pickingStudent?.name} 挑選魔導書
+                正在為 {pickingStudent.name} 挑選魔導書
               </h3>
               <p className="text-sm text-indigo-300/80 mt-1">
-                可直接搜尋，或選擇類別，再點書本的「點我借給 {pickingStudent?.name}」完成借閱。
+                可直接搜尋，或選擇類別，再點書本的「點我借給 {pickingStudent.name}」完成借閱。
               </p>
             </div>
           </div>
@@ -140,7 +150,7 @@ export default function BookGrid({
         )}
       </div>
 
-      {/* 視圖切換：搜尋結果 / 類別詳情 / 首頁推薦 */}
+      {/* 視圖切換：1. 搜尋結果 / 2. 類別卷軸清單 / 3. 書庫首頁（人氣榜 + 分類卡） */}
       {cleanSearch ? (
         <>
           <div className="flex justify-between items-center mb-8">
@@ -162,8 +172,7 @@ export default function BookGrid({
                   book={book}
                   coverClass={getBookCoverClass(book)}
                   isAvailable={book.status === "available"}
-                  borrowerName={borrower?.name || "已被除名學徒"}
-                  pickingStudentId={pickingStudentId}
+                  borrowerName={borrower?.name || "未知"}
                   pickingStudentName={pickingStudent?.name}
                   onCardClick={() => handleCardClick(book)}
                 />
@@ -207,8 +216,7 @@ export default function BookGrid({
                     book={book}
                     coverClass={getBookCoverClass(book)}
                     isAvailable={book.status === "available"}
-                    borrowerName={borrower?.name || "已被除名學徒"}
-                    pickingStudentId={pickingStudentId}
+                    borrowerName={borrower?.name || "未知"}
                     pickingStudentName={pickingStudent?.name}
                     onCardClick={() => handleCardClick(book)}
                   />
@@ -224,56 +232,46 @@ export default function BookGrid({
       ) : (
         <>
           {/* 人氣排行榜 */}
-          {!pickingStudentId && (
-            <PopularRanking
-              topBooks={topBooks}
-              onSelectBook={(book) => handleCardClick(book)}
-            />
+          {topBooks.length > 0 && !pickingStudentId && (
+            <PopularRanking topBooks={topBooks} />
           )}
 
-          {/* 分類卡片專區 */}
-          <div className="mb-6">
-            <h2 className="text-xl sm:text-2xl font-black text-amber-400 mb-6 flex items-center tracking-wider drop-shadow-md">
-              <Folder className="w-6 h-6 mr-3 text-amber-500" />
-              魔導書分類卷軸
+          {/* 魔導書庫分類 */}
+          <div className="flex justify-between items-center mb-8">
+            <h2 className="text-xl sm:text-2xl font-black text-amber-400 flex items-center drop-shadow-md tracking-wider">
+              <BookOpen className="w-6 h-6 sm:w-7 sm:h-7 mr-3 text-amber-500" />
+              魔導書庫分類
             </h2>
+          </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-              {categoryNames.map((catName) => {
-                const catBooks = books.filter((b) => b.category === catName);
-                const availableCount = catBooks.filter((b) => b.status === "available").length;
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-5 sm:gap-8">
+            {allCategoryNames.map((catName) => {
+              const count = books.filter((b) => b.category === catName).length;
+              if (count === 0 && !defaultCategoryNames.includes(catName)) return null;
 
-                return (
-                  <div
-                    key={catName}
-                    onClick={() => setSelectedCategory(catName)}
-                    className="glass-panel border border-[#8b6508]/40 rounded-2xl p-5 sm:p-6 cursor-pointer hover:border-amber-400 hover:shadow-[0_10px_30px_rgba(217,119,6,0.3)] hover:-translate-y-1 transition-all duration-300 flex flex-col justify-between group"
-                  >
-                    <div>
-                      <h3 className="text-lg sm:text-xl font-black text-amber-100 group-hover:text-amber-300 transition-colors leading-snug">
-                        {formatCategoryPill(catName)}
-                      </h3>
-                      <p className="text-xs sm:text-sm text-slate-400 mt-2">
-                        共 {catBooks.length} 冊藏書
-                      </p>
-                    </div>
-
-                    <div className="flex justify-between items-center mt-6 pt-4 border-t border-slate-800">
-                      <span className="text-xs font-bold px-2.5 py-1 rounded-md bg-emerald-950/60 text-emerald-300 border border-emerald-800/40">
-                        {availableCount} 本可借
-                      </span>
-                      <span className="text-xs text-amber-500 group-hover:text-amber-300 font-bold flex items-center">
-                        瀏覽此類 →
-                      </span>
-                    </div>
+              return (
+                <div
+                  key={catName}
+                  onClick={() => setSelectedCategory(catName)}
+                  className="glass-panel border border-[#8b6508]/40 p-5 sm:p-8 rounded-2xl cursor-pointer hover:border-amber-400 hover:bg-slate-800/80 transition-all duration-300 hover:shadow-[0_10px_30px_rgba(217,119,6,0.3)] hover:-translate-y-1 flex flex-row sm:flex-col lg:flex-row items-center justify-start sm:justify-center lg:justify-start group text-left sm:text-center lg:text-left gap-5"
+                >
+                  <div className="text-amber-300 bg-black/40 rounded-full w-14 h-14 sm:w-16 sm:h-16 lg:w-20 lg:h-20 flex items-center justify-center shadow-[inset_0_2px_10px_rgba(0,0,0,0.8)] border border-amber-900/50 group-hover:scale-110 group-hover:text-amber-400 group-hover:border-amber-500/50 transition-all shrink-0">
+                    <Scroll className="w-7 h-7 sm:w-8 sm:h-8 lg:w-10 lg:h-10" />
                   </div>
-                );
-              })}
-            </div>
+                  <div>
+                    <h3 className="text-lg sm:text-xl lg:text-2xl font-bold text-slate-200 group-hover:text-amber-300 transition-colors leading-snug tracking-wide">
+                      {formatCategoryName(catName)}
+                    </h3>
+                    <p className="text-sm text-amber-600/70 font-medium mt-2">
+                      藏有 {count} 本知識卷軸
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </>
       )}
     </div>
   );
 }
-

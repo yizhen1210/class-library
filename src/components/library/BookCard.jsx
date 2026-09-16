@@ -1,12 +1,11 @@
 import React from "react";
-import { User, Sparkles, BookOpen, Lock } from "lucide-react";
+import { User, Sparkles, WandSparkles, Clock } from "lucide-react";
 
 export default function BookCard({
   book,
   coverClass,
   isAvailable,
   borrowerName,
-  pickingStudentId,
   pickingStudentName,
   onCardClick
 }) {
@@ -19,7 +18,6 @@ export default function BookCard({
           : "opacity-90"
       }`}
     >
-      {/* 書脊與書皮封面 */}
       <div
         className={`h-28 sm:h-36 ${coverClass} flex items-center justify-center p-4 sm:p-5 relative shrink-0 book-spine`}
       >
@@ -30,7 +28,6 @@ export default function BookCard({
         </h3>
       </div>
 
-      {/* 書籍資訊與借閱狀態 */}
       <div className="p-5 sm:p-6 flex flex-col grow bg-gradient-to-b from-transparent to-black/40">
         <div className="mb-4">
           <span className="inline-block text-xs sm:text-sm font-bold px-3 py-1.5 rounded-md bg-black/50 text-amber-400 border border-amber-900/50 shadow-inner truncate max-w-full">
@@ -44,7 +41,7 @@ export default function BookCard({
         </p>
 
         {isAvailable ? (
-          pickingStudentId ? (
+          pickingStudentName ? (
             <div className="w-full py-3 bg-gradient-to-r from-indigo-700 to-indigo-500 group-hover:from-indigo-600 group-hover:to-indigo-400 text-white rounded-xl border border-indigo-400/50 transition-colors flex items-center justify-center font-bold text-sm sm:text-base shadow-[0_0_15px_rgba(79,70,229,0.5)] pointer-events-none">
               <Sparkles className="w-5 h-5 mr-2 shrink-0" />
               <span className="truncate tracking-wide">
@@ -53,13 +50,13 @@ export default function BookCard({
             </div>
           ) : (
             <div className="w-full py-3 bg-gradient-to-r from-amber-700 to-amber-600 group-hover:from-amber-600 group-hover:to-amber-500 text-amber-50 rounded-xl border border-amber-500/50 transition-colors flex items-center justify-center font-bold text-sm sm:text-base shadow-[0_0_15px_rgba(217,119,6,0.3)] pointer-events-none">
-              <BookOpen className="w-5 h-5 mr-2 shrink-0" />
+              <WandSparkles className="w-5 h-5 mr-2 shrink-0" />
               <span className="tracking-wide">點我借閱</span>
             </div>
           )
         ) : (
           <div className="w-full py-3 bg-black/40 text-rose-400/80 rounded-xl border border-rose-900/30 flex items-center justify-center font-bold text-sm sm:text-base shadow-inner">
-            <Lock className="w-5 h-5 mr-2 shrink-0" />
+            <Clock className="w-5 h-5 mr-2 shrink-0" />
             <span className="truncate">被 {borrowerName} 借走</span>
           </div>
         )}
@@ -67,4 +64,3 @@ export default function BookCard({
     </div>
   );
 }
-

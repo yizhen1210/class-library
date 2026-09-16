@@ -1,5 +1,5 @@
 import React from "react";
-import { BookMarked, Wand2, SlidersHorizontal } from "lucide-react";
+import { BookOpen, User, Settings } from "lucide-react";
 
 export default function NavTabs({ activeTab, onSelectTab, isDetailOpen }) {
   return (
@@ -12,7 +12,7 @@ export default function NavTabs({ activeTab, onSelectTab, isDetailOpen }) {
             : "glass-panel text-slate-300 hover:text-amber-200 border border-slate-700 hover:border-amber-700/50 hover:bg-slate-800/80 hover:-translate-y-1"
         }`}
       >
-        <BookMarked className="w-4 h-4 sm:w-5 sm:h-5 mr-2 shrink-0" />
+        <BookOpen className="w-4 h-4 sm:w-5 sm:h-5 mr-2 shrink-0" />
         魔導書庫
       </button>
 
@@ -24,7 +24,7 @@ export default function NavTabs({ activeTab, onSelectTab, isDetailOpen }) {
             : "glass-panel text-slate-300 hover:text-indigo-200 border border-slate-700 hover:border-indigo-700/50 hover:bg-slate-800/80 hover:-translate-y-1"
         }`}
       >
-        <Wand2 className="w-4 h-4 sm:w-5 sm:h-5 mr-2 shrink-0" />
+        <User className="w-4 h-4 sm:w-5 sm:h-5 mr-2 shrink-0" />
         魔法學徒
       </button>
 
@@ -36,10 +36,9 @@ export default function NavTabs({ activeTab, onSelectTab, isDetailOpen }) {
             : "glass-panel text-slate-300 hover:text-rose-200 border border-slate-700 hover:border-rose-700/50 hover:bg-slate-800/80 hover:-translate-y-1"
         }`}
       >
-        <SlidersHorizontal className="w-4 h-4 sm:w-5 sm:h-5 mr-2 shrink-0" />
+        <Settings className="w-4 h-4 sm:w-5 sm:h-5 mr-2 shrink-0" />
         中控室
       </button>
     </nav>
   );
 }
-

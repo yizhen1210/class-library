@@ -1,5 +1,5 @@
 import React from "react";
-import { X, Feather, Sparkles } from "lucide-react";
+import { X, Scroll, Sparkles } from "lucide-react";
 
 export default function BorrowContractModal({
   isOpen,
@@ -23,7 +23,7 @@ export default function BorrowContractModal({
         </button>
 
         <h2 className="text-2xl sm:text-3xl font-bold text-amber-400 mb-2 flex items-center justify-center drop-shadow-md">
-          <Feather className="w-6 h-6 mr-3" />
+          <Scroll className="w-6 h-6 mr-3" />
           簽訂借閱契約
         </h2>
 
@@ -74,4 +74,3 @@ export default function BorrowContractModal({
     </div>
   );
 }
-

@@ -1,6 +1,8 @@
 import React from "react";
-import { ChevronLeft, Sparkles, BookOpen, CheckCircle, Clock, Plus } from "lucide-react";
-import { calculateDurationMinutes, calculateValidReadingMinutes } from "../../utils/dateUtils";
+import { ChevronLeft, Star, BookOpen, Sparkles, Clock, Check, Scroll } from "lucide-react";
+import { calculateValidReadingMinutes, parseDateTime } from "../../utils/dateUtils";
+
+const DURATION_THRESHOLD_MINUTES = 30;
 
 export default function WizardDetail({
   student,
@@ -13,162 +15,179 @@ export default function WizardDetail({
 }) {
   if (!student) return null;
 
-  // 進行中的借閱
-  const activeBorrows = books.filter((b) => b.borrowerId === student.id);
+  const activeBorrows = records.filter(
+    (r) => r.studentId === student.id && r.status === "active"
+  );
+  const returnedRecords = records.filter(
+    (r) => r.studentId === student.id && r.status === "returned"
+  );
 
-  // 該學徒的所有歷史借閱記錄
-  const studentRecords = records.filter((r) => r.studentId === student.id);
+  // 計算獎勵與累計時長
+  const rewardedRecordIds = new Set();
+  const bookDurationMap = {};
+
+  [...returnedRecords]
+    .sort((a, b) => (parseDateTime(a.borrowDate)?.getTime() || 0) - (parseDateTime(b.borrowDate)?.getTime() || 0))
+    .forEach((r) => {
+      const dur =
+        typeof r.durationMinutes === "number"
+          ? r.durationMinutes
+          : calculateValidReadingMinutes(r.borrowDate, r.returnDate, holidays);
+      const prevTotal = bookDurationMap[r.bookId] || 0;
+      const nextTotal = prevTotal + dur;
+      if (prevTotal <= DURATION_THRESHOLD_MINUTES && nextTotal > DURATION_THRESHOLD_MINUTES) {
+        rewardedRecordIds.add(r.id);
+      }
+      bookDurationMap[r.bookId] = nextTotal;
+    });
+
+  const getBook = (bookId) => books.find((b) => b.id === bookId);
 
   return (
-    <div id="wizard-detail-top" className="animate-in fade-in duration-500">
-      {/* 頂部返回與學徒個人檔案卡 */}
-      <div className="flex items-center mb-6">
-        <button
-          onClick={onBack}
-          className="flex items-center text-indigo-400 hover:text-indigo-200 transition-colors bg-black/40 p-3 rounded-full border border-indigo-900/50 shadow-inner mr-4 hover:bg-slate-800"
-        >
-          <ChevronLeft className="w-6 h-6" />
-        </button>
-        <h2 className="text-xl sm:text-2xl font-black text-indigo-200 tracking-wider">
-          學徒修練檔案
-        </h2>
-      </div>
+    <div
+      id="wizard-detail-top"
+      style={{ paddingTop: "calc(env(safe-area-inset-top) + 0.75rem)" }}
+      className="max-w-4xl mx-auto animate-in fade-in duration-500"
+    >
+      <button
+        onClick={onBack}
+        className="flex items-center text-indigo-400 hover:text-indigo-300 mb-8 transition-colors font-bold text-sm sm:text-base glass-panel px-4 py-2 rounded-full border border-indigo-900/50 w-fit"
+      >
+        <ChevronLeft className="w-5 h-5 mr-1" />
+        返回名冊
+      </button>
 
-      <div className="glass-panel border border-indigo-500/40 rounded-3xl p-6 sm:p-8 mb-8 shadow-[0_10px_40px_rgba(79,70,229,0.2)]">
-        <div className="flex flex-col sm:flex-row items-center sm:items-start justify-between gap-6">
-          <div className="flex flex-col sm:flex-row items-center sm:items-start text-center sm:text-left gap-5">
-            <div className="w-24 h-24 rounded-3xl bg-indigo-950/80 border-2 border-indigo-400/50 flex items-center justify-center text-6xl shadow-[0_0_25px_rgba(79,70,229,0.4)]">
-              {student.avatar}
-            </div>
-            <div>
-              <div className="inline-block bg-indigo-950 text-indigo-300 text-xs font-black px-3 py-1 rounded-md border border-indigo-700/60 mb-2">
-                座號 {student.seatNumber} 號
-              </div>
-              <h1 className="text-2xl sm:text-4xl font-black text-white tracking-wide">
-                {student.name}
-              </h1>
-              <p className="text-slate-400 text-sm mt-1">
-                霍格華茲魔法書局正式認證學徒
-              </p>
-            </div>
+      {/* 學徒榮譽橫幅 */}
+      <div className="bg-gradient-to-br from-[#1e1b4b]/90 to-[#020617]/90 backdrop-blur-md rounded-3xl p-6 sm:p-10 border border-[#4338ca]/40 shadow-[0_15px_40px_rgba(49,46,129,0.4)] mb-10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-8 relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="flex items-center relative z-10">
+          <div className="text-6xl sm:text-8xl mr-5 sm:mr-8 drop-shadow-[0_5px_15px_rgba(0,0,0,0.8)] shrink-0 bg-black/30 rounded-full w-24 h-24 sm:w-32 sm:h-32 flex items-center justify-center border-4 border-indigo-900/50">
+            {student.avatar}
           </div>
-
-          <div className="flex flex-col items-center sm:items-end gap-3 w-full sm:w-auto">
-            <div className="bg-black/50 border border-amber-600/40 rounded-2xl px-6 py-3 flex items-center shadow-inner">
-              <Sparkles className="w-6 h-6 text-amber-400 mr-3" />
-              <div>
-                <span className="text-xs text-amber-400/70 font-bold block">魔力值總計</span>
-                <span className="text-2xl font-black text-amber-300">
-                  {student.magicPoints || 0}{" "}
-                  <span className="text-sm font-normal text-amber-400/80">點</span>
-                </span>
-              </div>
+          <div>
+            <div className="flex flex-wrap items-center mb-2 gap-3">
+              <span className="bg-black/60 text-indigo-300 text-xl sm:text-2xl font-black px-4 py-1.5 rounded-lg border-2 border-indigo-800 shadow-inner">
+                {student.seatNumber}號
+              </span>
+              <h2 className="text-2xl sm:text-4xl font-black text-indigo-50 break-all tracking-wider drop-shadow-md">
+                {student.name}
+              </h2>
             </div>
-
-            <button
-              onClick={() => onStartPickingBook(student.id)}
-              className="w-full sm:w-auto px-6 py-3 bg-gradient-to-r from-indigo-700 to-indigo-500 hover:from-indigo-600 hover:to-indigo-400 text-white rounded-xl font-bold transition-all shadow-[0_0_20px_rgba(79,70,229,0.5)] border border-indigo-300/40 flex items-center justify-center text-sm"
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              為 {student.name} 借新書
-            </button>
+            <div className="inline-flex items-center bg-amber-900/30 text-amber-300 px-4 py-2 rounded-full border border-amber-500/40 text-sm sm:text-base font-bold mt-2 shadow-inner">
+              <Star className="w-5 h-5 mr-2 drop-shadow-sm" />
+              累積魔力：
+              <span className="text-lg sm:text-xl ml-1">{student.magicPoints}</span>
+            </div>
           </div>
         </div>
+
+        <button
+          onClick={() => onStartPickingBook(student.id)}
+          className={`w-full sm:w-auto bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white px-8 py-5 rounded-2xl border border-indigo-300/50 transition-all shadow-[0_10px_25px_rgba(79,70,229,0.5)] font-black flex items-center justify-center shrink-0 text-lg sm:text-2xl relative z-10 ${
+            activeBorrows.length === 0 ? "flash-attn" : ""
+          }`}
+        >
+          <BookOpen className="w-7 h-7 sm:w-8 sm:h-8 mr-2.5 shrink-0" />
+          挑選新卷軸
+        </button>
       </div>
 
-      {/* 進行中的借閱 */}
-      <div className="mb-10">
-        <h3 className="text-lg sm:text-xl font-black text-indigo-300 mb-4 flex items-center tracking-wider">
-          <BookOpen className="w-5 h-5 mr-2 text-indigo-400" />
-          正在研讀的魔導書 ({activeBorrows.length})
-        </h3>
+      <div className="flex flex-col gap-8">
+        {/* 結契中 (目前借閱) */}
+        <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-amber-900/40">
+          <h3 className="text-xl sm:text-2xl font-black text-amber-400 mb-6 flex items-center border-b border-amber-900/30 pb-4 tracking-wider drop-shadow-sm">
+            <Sparkles className="w-6 h-6 sm:w-7 sm:h-7 mr-3 shrink-0" />
+            結契中 (目前借閱)
+          </h3>
 
-        {activeBorrows.length > 0 ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-            {activeBorrows.map((book) => {
-              const activeRecord = studentRecords.find(
-                (r) => r.bookId === book.id && r.status === "active"
-              );
-
-              return (
-                <div
-                  key={book.id}
-                  className="glass-panel border border-indigo-900/60 rounded-2xl p-5 flex flex-col justify-between"
-                >
-                  <div>
-                    <span className="text-xs font-bold px-2 py-0.5 rounded bg-indigo-950 text-indigo-400 border border-indigo-800/60">
-                      {book.category}
-                    </span>
-                    <h4 className="text-lg font-black text-white mt-2 leading-snug">
-                      {book.title}
-                    </h4>
-                    <p className="text-xs text-slate-400 mt-1">作者：{book.author}</p>
-                    {activeRecord && (
-                      <p className="text-xs text-indigo-300/70 mt-2 flex items-center">
-                        <Clock className="w-3.5 h-3.5 mr-1" />
-                        借閱時間：{activeRecord.borrowDate}
-                      </p>
-                    )}
-                  </div>
-
-                  <button
-                    onClick={() => onReturnBook(book.id, student.id)}
-                    className="mt-5 w-full py-2.5 bg-gradient-to-r from-emerald-700 to-emerald-500 hover:from-emerald-600 hover:to-emerald-400 text-white font-black text-sm rounded-xl border border-emerald-400/50 shadow-[0_0_15px_rgba(16,185,129,0.4)] transition-all flex items-center justify-center"
+          {activeBorrows.length === 0 ? (
+            <p className="text-amber-600/60 font-bold italic bg-black/20 p-8 rounded-2xl text-center border border-amber-900/20 text-sm sm:text-base">
+              目前沒有進行中的契約。
+            </p>
+          ) : (
+            <div className="space-y-5">
+              {activeBorrows.map((record) => {
+                const book = getBook(record.bookId);
+                return (
+                  <div
+                    key={record.id}
+                    className="bg-black/40 rounded-2xl p-5 border border-amber-700/40 flex flex-col sm:flex-row justify-between items-start sm:items-center shadow-[inset_0_2px_10px_rgba(0,0,0,0.5)] gap-4 hover:border-amber-500/60 transition-colors"
                   >
-                    <CheckCircle className="w-4 h-4 mr-2" />
-                    歸還魔導書（結束修行）
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="py-10 text-center text-slate-500 glass-panel rounded-2xl border border-slate-800">
-            目前沒有正在借閱的書籍。點擊上方「為 {student.name} 借新書」開始借閱！
-          </div>
-        )}
-      </div>
+                    <div className="w-full">
+                      <h4 className="font-black text-amber-100 text-lg sm:text-xl break-all leading-tight">
+                        {book?.title || "未知的魔導書"}
+                      </h4>
+                      <p className="text-sm text-amber-500/70 mt-2 flex items-center font-bold">
+                        <Clock className="w-4 h-4 mr-1.5 shrink-0" /> 締結於 {record.borrowDate}
+                      </p>
+                    </div>
 
-      {/* 歷史借閱日誌 */}
-      <div>
-        <h3 className="text-lg sm:text-xl font-black text-slate-300 mb-4 flex items-center tracking-wider">
-          <Clock className="w-5 h-5 mr-2 text-slate-400" />
-          歷史修行日誌 ({studentRecords.length})
-        </h3>
+                    <button
+                      onClick={() => onReturnBook(record.bookId, student.id)}
+                      className="flash-return w-full sm:w-auto bg-gradient-to-r from-emerald-700 to-emerald-600 hover:from-emerald-600 hover:to-emerald-500 text-white px-6 py-4 rounded-xl border border-emerald-400/50 transition-all font-black flex items-center justify-center shrink-0 text-base sm:text-lg shadow-[0_5px_15px_rgba(4,120,87,0.4)]"
+                    >
+                      <Check className="w-6 h-6 mr-2 shrink-0" />
+                      解除契約 (歸還)
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
 
-        <div className="glass-panel border border-slate-800 rounded-2xl overflow-hidden">
-          {studentRecords.length > 0 ? (
-            <div className="divide-y divide-slate-800/60">
-              {studentRecords.map((record) => {
-                const book = books.find((b) => b.id === record.bookId);
-                const isReturned = record.status === "returned";
-                const minutes = typeof record.durationMinutes === "number"
-                  ? record.durationMinutes
-                  : calculateValidReadingMinutes(record.borrowDate, record.returnDate, holidays);
+        {/* 修行日誌 (歷史) */}
+        <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-indigo-900/40">
+          <h3 className="text-xl sm:text-2xl font-black text-indigo-300 mb-6 flex items-center border-b border-indigo-900/30 pb-4 tracking-wider drop-shadow-sm">
+            <Scroll className="w-6 h-6 sm:w-7 sm:h-7 mr-3 shrink-0" />
+            修行日誌 (歷史)
+          </h3>
+
+          {returnedRecords.length === 0 ? (
+            <p className="text-indigo-600/60 font-bold italic bg-black/20 p-8 rounded-2xl text-center border border-indigo-900/20 text-sm sm:text-base">
+              尚未有歷史紀錄。
+            </p>
+          ) : (
+            <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
+              {returnedRecords.map((record) => {
+                const book = getBook(record.bookId);
+                const duration =
+                  typeof record.durationMinutes === "number"
+                    ? record.durationMinutes
+                    : calculateValidReadingMinutes(record.borrowDate, record.returnDate, holidays);
+                const isRewarded = rewardedRecordIds.has(record.id);
 
                 return (
                   <div
                     key={record.id}
-                    className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 hover:bg-slate-800/30 transition-colors"
+                    className="bg-black/30 rounded-xl p-4 border border-indigo-800/30 flex justify-between items-center gap-3 hover:bg-black/50 transition-colors"
                   >
-                    <div>
-                      <span className="font-bold text-slate-200">
-                        {book?.title || "未知書籍"}
-                      </span>
-                      <p className="text-xs text-slate-400 mt-0.5">
-                        借閱：{record.borrowDate}
-                        {record.returnDate && ` → 歸還：${record.returnDate}`}
-                      </p>
+                    <div className="min-w-0">
+                      <h4 className="font-bold text-indigo-100 text-sm sm:text-base truncate">
+                        {book?.title || "未知的魔導書"}
+                      </h4>
+                      <div className="text-xs text-indigo-400/60 mt-1.5 flex flex-col sm:flex-row sm:items-center sm:space-x-3 gap-1 sm:gap-0 font-medium">
+                        <span className="flex items-center">
+                          <Clock className="w-3.5 h-3.5 mr-1 shrink-0" />
+                          借：{record.borrowDate}
+                        </span>
+                        <span className="hidden sm:inline opacity-50">|</span>
+                        <span className="flex items-center">
+                          <Check className="w-3.5 h-3.5 mr-1 shrink-0" />
+                          還：{record.returnDate}
+                        </span>
+                      </div>
                     </div>
 
-                    <div className="flex items-center space-x-3">
-                      {isReturned ? (
-                        <span className="text-xs font-bold text-slate-400 bg-slate-900 px-2.5 py-1 rounded border border-slate-700">
-                          研讀 {minutes} 分鐘
-                        </span>
-                      ) : (
-                        <span className="text-xs font-bold text-amber-400 bg-amber-950/60 px-2.5 py-1 rounded border border-amber-800/40">
-                          修練中
+                    <div className="flex flex-col items-end gap-1.5 shrink-0">
+                      <span className="text-xs font-black text-indigo-200 bg-indigo-900/50 px-2.5 py-1.5 rounded-md border border-indigo-700/50 whitespace-nowrap shadow-inner">
+                        看了 {duration} 分
+                      </span>
+                      {isRewarded && (
+                        <span className="text-xs font-black text-amber-400 bg-amber-900/40 px-2.5 py-1 rounded-md border border-amber-700/50 whitespace-nowrap shadow-inner flex items-center">
+                          <Sparkles className="w-3 h-3 mr-1" />
+                          +10 魔力
                         </span>
                       )}
                     </div>
@@ -176,14 +195,9 @@ export default function WizardDetail({
                 );
               })}
             </div>
-          ) : (
-            <div className="p-8 text-center text-slate-500 text-sm">
-              尚無歷史修行日誌。
-            </div>
           )}
         </div>
       </div>
     </div>
   );
 }
-
