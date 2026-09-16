@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import {
   Settings,
   Lock,
@@ -66,9 +66,96 @@ export default function AdminDashboard({
   // 館藏書目篩選
   const [bookFilter, setBookFilter] = useState("");
 
-  // 國定假日輸入
-  const [holidayDate, setHolidayDate] = useState("");
+  // 國定假日輸入狀態 (支援 年、月、日 下拉連動、快捷設定與原生深色日曆選擇器)
+  const initialToday = new Date();
+  const [holidayYear, setHolidayYear] = useState(initialToday.getFullYear());
+  const [holidayMonth, setHolidayMonth] = useState(
+    String(initialToday.getMonth() + 1).padStart(2, "0")
+  );
+  const [holidayDay, setHolidayDay] = useState(
+    String(initialToday.getDate()).padStart(2, "0")
+  );
   const [holidayName, setHolidayName] = useState("");
+  const dateInputRef = useRef(null);
+
+  // 根據所選年月動態計算該月總天數 (例如二月 28/29 天，大月 31 天)
+  const daysInSelectedMonth = new Date(
+    Number(holidayYear),
+    Number(holidayMonth),
+    0
+  ).getDate();
+
+  // 若切換年月後原本日期超出該月上限，自動校正至該月最後一日
+  const validHolidayDay = Math.min(Number(holidayDay) || 1, daysInSelectedMonth);
+  const currentHolidayDateString = `${holidayYear}-${String(holidayMonth).padStart(2, "0")}-${String(validHolidayDay).padStart(2, "0")}`;
+
+  const selectedDateObj = new Date(
+    Number(holidayYear),
+    Number(holidayMonth) - 1,
+    validHolidayDay
+  );
+  const WEEKDAY_NAMES = ["週日", "週一", "週二", "週三", "週四", "週五", "週六"];
+  const selectedWeekday = isNaN(selectedDateObj.getTime())
+    ? ""
+    : WEEKDAY_NAMES[selectedDateObj.getDay()];
+  const isSelectedWeekend =
+    !isNaN(selectedDateObj.getTime()) &&
+    (selectedDateObj.getDay() === 0 || selectedDateObj.getDay() === 6);
+
+  const handleYearChange = (e) => {
+    const newY = Number(e.target.value);
+    setHolidayYear(newY);
+    const maxDays = new Date(newY, Number(holidayMonth), 0).getDate();
+    if (Number(holidayDay) > maxDays) {
+      setHolidayDay(String(maxDays).padStart(2, "0"));
+    }
+  };
+
+  const handleMonthChange = (e) => {
+    const newM = e.target.value;
+    setHolidayMonth(newM);
+    const maxDays = new Date(holidayYear, Number(newM), 0).getDate();
+    if (Number(holidayDay) > maxDays) {
+      setHolidayDay(String(maxDays).padStart(2, "0"));
+    }
+  };
+
+  const handleDayChange = (e) => {
+    setHolidayDay(e.target.value);
+  };
+
+  const handleNativeDateChange = (e) => {
+    const val = e.target.value;
+    if (!val) return;
+    const [y, m, d] = val.split("-");
+    if (y && m && d) {
+      setHolidayYear(Number(y));
+      setHolidayMonth(m);
+      setHolidayDay(d);
+    }
+  };
+
+  const setQuickHolidayDate = (offsetDays = 0) => {
+    const d = new Date();
+    if (offsetDays !== 0) {
+      d.setDate(d.getDate() + offsetDays);
+    }
+    setHolidayYear(d.getFullYear());
+    setHolidayMonth(String(d.getMonth() + 1).padStart(2, "0"));
+    setHolidayDay(String(d.getDate()).padStart(2, "0"));
+  };
+
+  const formatHolidayDate = (dateStr) => {
+    if (!dateStr) return "";
+    const parts = dateStr.split("-");
+    if (parts.length === 3) {
+      const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+      if (!isNaN(d.getTime())) {
+        return `${dateStr} (${WEEKDAY_NAMES[d.getDay()]})`;
+      }
+    }
+    return dateStr;
+  };
 
   // 解除結界驗證
   const handleUnlockBarrier = () => {
@@ -142,9 +229,8 @@ export default function AdminDashboard({
   // 執行新增放假排除日
   const handleCreateHoliday = (e) => {
     e.preventDefault();
-    if (!holidayDate) return;
-    onAddHoliday(holidayDate, holidayName.trim());
-    setHolidayDate("");
+    if (!currentHolidayDateString) return;
+    onAddHoliday(currentHolidayDateString, holidayName.trim());
     setHolidayName("");
   };
 
@@ -681,32 +767,136 @@ export default function AdminDashboard({
         </div>
 
         {/* 新增放假日表單 */}
-        <form
-          onSubmit={handleCreateHoliday}
-          className="flex flex-col sm:flex-row gap-3 mb-6"
-        >
-          <input
-            type="date"
-            value={holidayDate}
-            onChange={(e) => setHolidayDate(e.target.value)}
-            className="bg-black/50 border-2 border-slate-700 rounded-xl p-3 text-slate-100 focus:outline-none focus:border-amber-500 shadow-inner sm:w-56"
-            required
-          />
-          <input
-            type="text"
-            value={holidayName}
-            onChange={(e) => setHolidayName(e.target.value)}
-            placeholder="備註名稱（例如：中秋節、雙十節、校慶補假）"
-            className="flex-1 bg-black/50 border-2 border-slate-700 rounded-xl p-3 text-slate-100 focus:outline-none focus:border-amber-500 shadow-inner"
-          />
-          <button
-            type="submit"
-            disabled={!holidayDate}
-            className="bg-gradient-to-r from-amber-700 to-amber-600 hover:from-amber-600 hover:to-amber-500 disabled:opacity-40 disabled:cursor-not-allowed text-white px-5 py-3 rounded-xl border border-amber-400/50 transition-all font-bold flex items-center justify-center shrink-0 shadow-[0_0_15px_rgba(217,119,6,0.3)]"
-          >
-            <Plus className="w-5 h-5 mr-2" />
-            新增放假日
-          </button>
+        <form onSubmit={handleCreateHoliday} className="space-y-4 mb-6">
+          {/* 年、月、日 下拉選單 + 快捷按鈕 + 原生深色日曆選單 */}
+          <div>
+            <label className="block text-xs font-bold text-amber-300 mb-2">
+              選擇排除放假之年、月、日：
+            </label>
+            <div className="flex flex-wrap items-center gap-2">
+              {/* 年份下拉選單 */}
+              <div className="relative">
+                <select
+                  value={holidayYear}
+                  onChange={handleYearChange}
+                  className="bg-slate-900 border-2 border-amber-700/60 hover:border-amber-500 rounded-xl px-3 py-2.5 text-amber-200 font-bold text-sm focus:outline-none focus:border-amber-400 cursor-pointer shadow-inner pr-8 appearance-none"
+                >
+                  {[2025, 2026, 2027, 2028, 2029, 2030].map((y) => (
+                    <option key={y} value={y} className="bg-slate-900 text-slate-100">
+                      {y} 年
+                    </option>
+                  ))}
+                </select>
+                <div className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-amber-400 text-xs">
+                  ▼
+                </div>
+              </div>
+
+              {/* 月份下拉選單 */}
+              <div className="relative">
+                <select
+                  value={holidayMonth}
+                  onChange={handleMonthChange}
+                  className="bg-slate-900 border-2 border-amber-700/60 hover:border-amber-500 rounded-xl px-3 py-2.5 text-amber-200 font-bold text-sm focus:outline-none focus:border-amber-400 cursor-pointer shadow-inner pr-8 appearance-none"
+                >
+                  {Array.from({ length: 12 }, (_, i) => {
+                    const val = String(i + 1).padStart(2, "0");
+                    return (
+                      <option key={val} value={val} className="bg-slate-900 text-slate-100">
+                        {val} 月
+                      </option>
+                    );
+                  })}
+                </select>
+                <div className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-amber-400 text-xs">
+                  ▼
+                </div>
+              </div>
+
+              {/* 日期下拉選單 */}
+              <div className="relative">
+                <select
+                  value={String(validHolidayDay).padStart(2, "0")}
+                  onChange={handleDayChange}
+                  className="bg-slate-900 border-2 border-amber-700/60 hover:border-amber-500 rounded-xl px-3 py-2.5 text-amber-200 font-bold text-sm focus:outline-none focus:border-amber-400 cursor-pointer shadow-inner pr-8 appearance-none"
+                >
+                  {Array.from({ length: daysInSelectedMonth }, (_, i) => {
+                    const val = String(i + 1).padStart(2, "0");
+                    return (
+                      <option key={val} value={val} className="bg-slate-900 text-slate-100">
+                        {val} 日
+                      </option>
+                    );
+                  })}
+                </select>
+                <div className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-amber-400 text-xs">
+                  ▼
+                </div>
+              </div>
+
+              {/* 快捷按鈕 */}
+              <button
+                type="button"
+                onClick={() => setQuickHolidayDate(0)}
+                className="px-3 py-2 bg-amber-950/60 hover:bg-amber-900/80 text-amber-300 border border-amber-700/50 rounded-xl text-xs font-bold transition-all"
+              >
+                今天
+              </button>
+              <button
+                type="button"
+                onClick={() => setQuickHolidayDate(1)}
+                className="px-3 py-2 bg-amber-950/60 hover:bg-amber-900/80 text-amber-300 border border-amber-700/50 rounded-xl text-xs font-bold transition-all"
+              >
+                明天
+              </button>
+
+              {/* 同步之原生日曆選擇器 */}
+              <div className="relative flex items-center">
+                <input
+                  ref={dateInputRef}
+                  type="date"
+                  value={currentHolidayDateString}
+                  onChange={handleNativeDateChange}
+                  style={{ colorScheme: "dark" }}
+                  className="bg-slate-900 border-2 border-amber-700/60 hover:border-amber-500 rounded-xl px-3 py-2 text-amber-200 text-xs font-mono cursor-pointer focus:outline-none focus:border-amber-400 shadow-inner"
+                  title="點擊此處亦可開啟日曆挑選"
+                />
+              </div>
+            </div>
+
+            {/* 即時日期與星期預覽提示 */}
+            <div className="mt-2 text-xs text-amber-200/90 flex flex-wrap items-center gap-2">
+              <span>
+                已選擇：
+                <strong className="text-amber-400 font-mono text-sm ml-1">
+                  {currentHolidayDateString} ({selectedWeekday})
+                </strong>
+              </span>
+              {isSelectedWeekend && (
+                <span className="text-amber-400/80 bg-amber-950/50 px-2 py-0.5 rounded border border-amber-800/40">
+                  ※ 提示：此日已是週末，系統本來就不會計算借閱，仍可加入備註以防萬一。
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* 備註名稱與送出按鈕 */}
+          <div className="flex flex-col sm:flex-row gap-3">
+            <input
+              type="text"
+              value={holidayName}
+              onChange={(e) => setHolidayName(e.target.value)}
+              placeholder="放假備註名稱（例如：中秋節、雙十節、校慶補假、全校運動會補假）"
+              className="flex-1 bg-black/50 border-2 border-slate-700 rounded-xl p-3 text-slate-100 focus:outline-none focus:border-amber-500 shadow-inner text-sm"
+            />
+            <button
+              type="submit"
+              className="bg-gradient-to-r from-amber-700 to-amber-600 hover:from-amber-600 hover:to-amber-500 text-white px-5 py-3 rounded-xl border border-amber-400/50 transition-all font-bold flex items-center justify-center shrink-0 shadow-[0_0_15px_rgba(217,119,6,0.3)] text-sm"
+            >
+              <Plus className="w-5 h-5 mr-2" />
+              新增排除放假日
+            </button>
+          </div>
         </form>
 
         {/* 已設定的放假日期列表 */}
@@ -725,7 +915,7 @@ export default function AdminDashboard({
                 >
                   <div className="flex items-center gap-3">
                     <span className="font-mono text-amber-300 font-bold">
-                      {h.date}
+                      {formatHolidayDate(h.date)}
                     </span>
                     {h.name && (
                       <span className="text-slate-300 text-xs sm:text-sm">

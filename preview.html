@@ -469,6 +469,131 @@
       render();
     }
 
+    function getSelectedHolidayDate() {
+      const yearSel = document.getElementById("holiday-year-sel");
+      const monthSel = document.getElementById("holiday-month-sel");
+      const daySel = document.getElementById("holiday-day-sel");
+      if (!yearSel || !monthSel || !daySel) return "";
+      const y = yearSel.value;
+      const m = monthSel.value.padStart(2, "0");
+      const d = daySel.value.padStart(2, "0");
+      return `${y}-${m}-${d}`;
+    }
+
+    function onHolidayYearMonthChange() {
+      const yearSel = document.getElementById("holiday-year-sel");
+      const monthSel = document.getElementById("holiday-month-sel");
+      const daySel = document.getElementById("holiday-day-sel");
+      const dateIn = document.getElementById("holiday-date-in");
+      if (!yearSel || !monthSel || !daySel) return;
+
+      const y = parseInt(yearSel.value, 10);
+      const m = parseInt(monthSel.value, 10);
+      const daysInMonth = new Date(y, m, 0).getDate();
+
+      const curDay = parseInt(daySel.value, 10) || 1;
+      let dayHtml = "";
+      for (let d = 1; d <= daysInMonth; d++) {
+        const val = String(d).padStart(2, "0");
+        dayHtml += `<option value="${val}">${val} 日</option>`;
+      }
+      daySel.innerHTML = dayHtml;
+      daySel.value = String(Math.min(curDay, daysInMonth)).padStart(2, "0");
+
+      if (dateIn) {
+        dateIn.value = `${y}-${String(m).padStart(2, "0")}-${daySel.value}`;
+      }
+      updateHolidayWeekdayPreview();
+    }
+
+    function onHolidayDateInputChange(val) {
+      if (!val) return;
+      const parts = val.split("-");
+      if (parts.length !== 3) return;
+      const [y, m, d] = parts;
+      const yearSel = document.getElementById("holiday-year-sel");
+      const monthSel = document.getElementById("holiday-month-sel");
+      const daySel = document.getElementById("holiday-day-sel");
+      if (yearSel && monthSel && daySel) {
+        yearSel.value = y;
+        monthSel.value = m;
+        const daysInMonth = new Date(parseInt(y, 10), parseInt(m, 10), 0).getDate();
+        let dayHtml = "";
+        for (let i = 1; i <= daysInMonth; i++) {
+          const v = String(i).padStart(2, "0");
+          dayHtml += `<option value="${v}">${v} 日</option>`;
+        }
+        daySel.innerHTML = dayHtml;
+        daySel.value = d;
+      }
+      updateHolidayWeekdayPreview();
+    }
+
+    function setHolidayQuickDate(offsetDays = 0) {
+      const d = new Date();
+      if (offsetDays !== 0) {
+        d.setDate(d.getDate() + offsetDays);
+      }
+      const y = String(d.getFullYear());
+      const m = String(d.getMonth() + 1).padStart(2, "0");
+      const dayVal = String(d.getDate()).padStart(2, "0");
+
+      const yearSel = document.getElementById("holiday-year-sel");
+      const monthSel = document.getElementById("holiday-month-sel");
+      const daySel = document.getElementById("holiday-day-sel");
+      const dateIn = document.getElementById("holiday-date-in");
+
+      if (yearSel && monthSel && daySel) {
+        yearSel.value = y;
+        monthSel.value = m;
+        const daysInMonth = new Date(parseInt(y, 10), parseInt(m, 10), 0).getDate();
+        let dayHtml = "";
+        for (let i = 1; i <= daysInMonth; i++) {
+          const v = String(i).padStart(2, "0");
+          dayHtml += `<option value="${v}">${v} 日</option>`;
+        }
+        daySel.innerHTML = dayHtml;
+        daySel.value = dayVal;
+      }
+      if (dateIn) {
+        dateIn.value = `${y}-${m}-${dayVal}`;
+      }
+      updateHolidayWeekdayPreview();
+    }
+
+    function updateHolidayWeekdayPreview() {
+      const previewSpan = document.getElementById("holiday-weekday-preview");
+      if (!previewSpan) return;
+      const curDate = getSelectedHolidayDate();
+      if (!curDate) {
+        previewSpan.textContent = "";
+        return;
+      }
+      const parts = curDate.split("-");
+      const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+      if (isNaN(d.getTime())) {
+        previewSpan.textContent = "";
+        return;
+      }
+      const weekdays = ["週日", "週一", "週二", "週三", "週四", "週五", "週六"];
+      const w = weekdays[d.getDay()];
+      const isWeekend = (d.getDay() === 0 || d.getDay() === 6);
+      previewSpan.innerHTML = `已選擇：<strong class="text-amber-400 font-mono text-sm ml-1">${curDate} (${w})</strong>${isWeekend ? ' <span class="text-amber-400/80 bg-amber-950/50 px-2 py-0.5 rounded border border-amber-800/40 text-xs ml-2">※ 提示：此日已是週末，系統本來就不會計算借閱，仍可加入備註</span>' : ''}`;
+    }
+
+    function formatHolidayDateDisplay(dateStr) {
+      if (!dateStr) return "";
+      const parts = dateStr.split("-");
+      if (parts.length === 3) {
+        const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+        if (!isNaN(d.getTime())) {
+          const weekdays = ["週日", "週一", "週二", "週三", "週四", "週五", "週六"];
+          return `${dateStr} (${weekdays[d.getDay()]})`;
+        }
+      }
+      return dateStr;
+    }
+
     // --- 主渲染器 ---
     function render() {
       // 導覽按鈕樣式切換
@@ -895,6 +1020,14 @@
       const pageStudents = state.students.slice((curPage - 1) * 5, curPage * 5);
       const borrowedBooks = state.books.filter(b => b.status === "borrowed");
 
+      const nowD = new Date();
+      const nowYear = nowD.getFullYear();
+      const nowMonth = String(nowD.getMonth() + 1).padStart(2, "0");
+      const nowDay = String(nowD.getDate()).padStart(2, "0");
+      const nowDaysInMonth = new Date(nowYear, nowD.getMonth() + 1, 0).getDate();
+      const WEEKDAY_NAMES = ["週日", "週一", "週二", "週三", "週四", "週五", "週六"];
+      const nowWeekday = WEEKDAY_NAMES[nowD.getDay()];
+
       container.innerHTML = `
         <div class="max-w-5xl mx-auto animate-in fade-in duration-500">
           <!-- 頂部中控室資訊 -->
@@ -1077,22 +1210,98 @@
               </div>
             </div>
 
-            <form onsubmit="event.preventDefault(); addHoliday(document.getElementById('holiday-date-in').value, document.getElementById('holiday-name-in').value); document.getElementById('holiday-date-in').value=''; document.getElementById('holiday-name-in').value='';" class="flex flex-col sm:flex-row gap-3 mb-6">
-              <input type="date" id="holiday-date-in" required class="bg-black/50 border-2 border-slate-700 rounded-xl p-3 text-slate-100 shadow-inner sm:w-56" />
-              <input type="text" id="holiday-name-in" placeholder="備註名稱（例如：中秋節、雙十節、校慶補假）" class="flex-1 bg-black/50 border-2 border-slate-700 rounded-xl p-3 text-slate-100 shadow-inner" />
-              <button type="submit" class="bg-gradient-to-r from-amber-700 to-amber-600 hover:from-amber-600 hover:to-amber-500 text-white px-5 py-3 rounded-xl border border-amber-400/50 font-bold shadow-[0_0_15px_rgba(217,119,6,0.3)]">
-                ＋ 新增放假日
-              </button>
-            </form>
+            <!-- 新增放假日表單 -->
+            <div class="space-y-4 mb-6">
+              <div>
+                <label class="block text-xs font-bold text-amber-300 mb-2">
+                  選擇排除放假之年、月、日：
+                </label>
+                <div class="flex flex-wrap items-center gap-2">
+                  <!-- 年份下拉選單 -->
+                  <div class="relative">
+                    <select id="holiday-year-sel" onchange="onHolidayYearMonthChange()" class="bg-slate-900 border-2 border-amber-700/60 hover:border-amber-500 rounded-xl px-3 py-2.5 text-amber-200 font-bold text-sm focus:outline-none focus:border-amber-400 cursor-pointer shadow-inner pr-8 appearance-none">
+                      ${[2025, 2026, 2027, 2028, 2029, 2030].map(y => `<option value="${y}" ${y === nowYear ? 'selected' : ''}>${y} 年</option>`).join('')}
+                    </select>
+                    <div class="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-amber-400 text-xs">▼</div>
+                  </div>
 
+                  <!-- 月份下拉選單 -->
+                  <div class="relative">
+                    <select id="holiday-month-sel" onchange="onHolidayYearMonthChange()" class="bg-slate-900 border-2 border-amber-700/60 hover:border-amber-500 rounded-xl px-3 py-2.5 text-amber-200 font-bold text-sm focus:outline-none focus:border-amber-400 cursor-pointer shadow-inner pr-8 appearance-none">
+                      ${Array.from({length: 12}, (_, i) => {
+                        const val = String(i + 1).padStart(2, '0');
+                        return `<option value="${val}" ${val === nowMonth ? 'selected' : ''}>${val} 月</option>`;
+                      }).join('')}
+                    </select>
+                    <div class="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-amber-400 text-xs">▼</div>
+                  </div>
+
+                  <!-- 日期下拉選單 -->
+                  <div class="relative">
+                    <select id="holiday-day-sel" onchange="const dIn = document.getElementById('holiday-date-in'); if (dIn) dIn.value = getSelectedHolidayDate(); updateHolidayWeekdayPreview();" class="bg-slate-900 border-2 border-amber-700/60 hover:border-amber-500 rounded-xl px-3 py-2.5 text-amber-200 font-bold text-sm focus:outline-none focus:border-amber-400 cursor-pointer shadow-inner pr-8 appearance-none">
+                      ${Array.from({length: nowDaysInMonth}, (_, i) => {
+                        const val = String(i + 1).padStart(2, '0');
+                        return `<option value="${val}" ${val === nowDay ? 'selected' : ''}>${val} 日</option>`;
+                      }).join('')}
+                    </select>
+                    <div class="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-amber-400 text-xs">▼</div>
+                  </div>
+
+                  <!-- 快捷按鈕 -->
+                  <button type="button" onclick="setHolidayQuickDate(0)" class="px-3 py-2 bg-amber-950/60 hover:bg-amber-900/80 text-amber-300 border border-amber-700/50 rounded-xl text-xs font-bold transition-all">
+                    今天
+                  </button>
+                  <button type="button" onclick="setHolidayQuickDate(1)" class="px-3 py-2 bg-amber-950/60 hover:bg-amber-900/80 text-amber-300 border border-amber-700/50 rounded-xl text-xs font-bold transition-all">
+                    明天
+                  </button>
+
+                  <!-- 同步之原生日曆選擇器 (深色樣式) -->
+                  <div class="relative flex items-center">
+                    <input
+                      type="date"
+                      id="holiday-date-in"
+                      value="${nowYear}-${nowMonth}-${nowDay}"
+                      onchange="onHolidayDateInputChange(this.value)"
+                      style="color-scheme: dark;"
+                      class="bg-slate-900 border-2 border-amber-700/60 hover:border-amber-500 rounded-xl px-3 py-2 text-amber-200 text-xs font-mono cursor-pointer focus:outline-none focus:border-amber-400 shadow-inner"
+                      title="點擊此處亦可開啟日曆挑選"
+                    />
+                  </div>
+                </div>
+
+                <!-- 即時日期與星期預覽提示 -->
+                <div id="holiday-weekday-preview" class="mt-2 text-xs text-amber-200/90 flex flex-wrap items-center gap-2">
+                  <span>已選擇：<strong class="text-amber-400 font-mono text-sm ml-1">${nowYear}-${nowMonth}-${nowDay} (${nowWeekday})</strong></span>
+                </div>
+              </div>
+
+              <!-- 備註名稱與送出按鈕 -->
+              <div class="flex flex-col sm:flex-row gap-3">
+                <input
+                  type="text"
+                  id="holiday-name-in"
+                  placeholder="放假備註名稱（例如：中秋節、雙十節、校慶補假、全校運動會補假）"
+                  class="flex-1 bg-black/50 border-2 border-slate-700 rounded-xl p-3 text-slate-100 focus:outline-none focus:border-amber-500 shadow-inner text-sm"
+                />
+                <button
+                  type="button"
+                  onclick="const dt = getSelectedHolidayDate(); const nm = (document.getElementById('holiday-name-in')?.value || '').trim(); if(dt){ addHoliday(dt, nm); }"
+                  class="bg-gradient-to-r from-amber-700 to-amber-600 hover:from-amber-600 hover:to-amber-500 text-white px-5 py-3 rounded-xl border border-amber-400/50 transition-all font-bold flex items-center justify-center shrink-0 shadow-[0_0_15px_rgba(217,119,6,0.3)] text-sm"
+                >
+                  ➕ 新增排除放假日
+                </button>
+              </div>
+            </div>
+
+            <!-- 已設定的放假日期列表 -->
             <div class="space-y-2.5 max-h-48 overflow-y-auto pr-1 custom-scrollbar">
-              ${state.holidays.length === 0 ? '<p class="text-slate-500 text-xs sm:text-sm text-center py-4 italic bg-black/20 rounded-xl border border-dashed border-slate-800">目前尚未加入任何國定假日。除預設週末不上課外，所有平日將依課間時段計算。</p>' : state.holidays.map(h => `
+              ${state.holidays.length === 0 ? '<p class="text-slate-500 text-xs sm:text-sm text-center py-4 italic bg-black/20 rounded-xl border border-dashed border-slate-800">目前尚未加入任何國定假日。除預設週末不上課外，所有平日將依課間時段計算。</p>' : [...state.holidays].sort((a, b) => (a.date || "").localeCompare(b.date || "")).map(h => `
                 <div class="bg-black/40 rounded-xl px-4 py-2.5 border border-amber-900/30 flex items-center justify-between gap-3 text-sm hover:border-amber-700/50 transition-colors">
                   <div class="flex items-center gap-3">
-                    <span class="font-mono text-amber-300 font-bold">${h.date}</span>
-                    <span class="text-slate-300 text-xs sm:text-sm">${h.name || ''}</span>
+                    <span class="font-mono text-amber-300 font-bold">${formatHolidayDateDisplay(h.date)}</span>
+                    ${h.name ? `<span class="text-slate-300 text-xs sm:text-sm">${h.name}</span>` : ''}
                   </div>
-                  <button onclick="deleteHoliday('${h.id}')" class="p-1.5 text-slate-500 hover:text-rose-400 rounded-lg">🗑️</button>
+                  <button type="button" onclick="deleteHoliday('${h.id}')" class="p-1.5 text-slate-500 hover:text-rose-400 hover:bg-rose-900/30 rounded-lg transition-colors border border-transparent hover:border-rose-800/50" title="移除此假日">🗑️</button>
                 </div>
               `).join("")}
             </div>
