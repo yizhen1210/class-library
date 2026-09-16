@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>霍格華茲班級魔法書局 - 本地直接預覽</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://font.emtech.cc/css/Iansui" />
+  <style>
+    body {
+      font-family: 'Iansui', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background-color: #020617;
+    }
+    .wood-texture {
+      background-image: repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(0,0,0,0.25) 3px, rgba(0,0,0,0.25) 6px);
+    }
+    .book-spine {
+      box-shadow: inset 8px 0 12px rgba(0,0,0,0.8), inset -1px 0 2px rgba(255,255,255,0.15);
+      border-left: 6px solid rgba(0,0,0,0.7);
+    }
+    .glass-panel {
+      background: rgba(15, 23, 42, 0.75);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }
+    .custom-scroll::-webkit-scrollbar {
+      width: 6px;
+    }
+    .custom-scroll::-webkit-scrollbar-track {
+      background: rgba(0,0,0,0.2);
+    }
+    .custom-scroll::-webkit-scrollbar-thumb {
+      background: rgba(217, 119, 6, 0.4);
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body class="text-slate-100 antialiased min-h-screen p-4 sm:p-8 flex flex-col items-center">
+  
+  <div class="max-w-5xl w-full">
+    <!-- 頂部告示提示 -->
+    <div class="mb-4 py-2 px-4 rounded-xl bg-amber-950/40 border border-amber-600/30 text-amber-300 text-xs text-center flex items-center justify-center gap-2">
+      <span>💡</span>
+      <span>這是本機免伺服器直開版本（靜態預覽模式）。完整後端 Firebase 互動版可連上 <a href="https://yizhen1210.github.io/class-library/" target="_blank" class="underline font-bold text-amber-200">線上版本</a>。</span>
+    </div>
+
+    <!-- 霍格華茲魔法招牌 Header -->
+    <header class="text-center mb-8 relative flex justify-center px-4">
+      <!-- 左右吊鍊 -->
+      <div class="absolute -top-6 left-[18%] sm:left-[28%] w-1.5 h-10 border-x-2 border-slate-500/60 border-dotted"></div>
+      <div class="absolute -top-6 right-[18%] sm:right-[28%] w-1.5 h-10 border-x-2 border-slate-500/60 border-dotted"></div>
+
+      <div class="relative bg-gradient-to-b from-[#5c3a21] via-[#3e2312] to-[#241107] border-y-4 border-x-2 border-[#1a0b04] rounded-2xl py-6 px-8 sm:px-16 shadow-[0_20px_50px_rgba(0,0,0,0.8)] overflow-hidden max-w-2xl w-full">
+        <div class="absolute inset-0 wood-texture opacity-30 mix-blend-multiply pointer-events-none"></div>
+        <!-- 鉚釘裝飾 -->
+        <div class="absolute top-2.5 left-2.5 w-3.5 h-3.5 bg-gradient-to-br from-slate-300 to-slate-600 rounded-full border border-slate-700 shadow-inner"></div>
+        <div class="absolute top-2.5 right-2.5 w-3.5 h-3.5 bg-gradient-to-br from-slate-300 to-slate-600 rounded-full border border-slate-700 shadow-inner"></div>
+        <div class="absolute bottom-2.5 left-2.5 w-3.5 h-3.5 bg-gradient-to-br from-slate-300 to-slate-600 rounded-full border border-slate-700 shadow-inner"></div>
+        <div class="absolute bottom-2.5 right-2.5 w-3.5 h-3.5 bg-gradient-to-br from-slate-300 to-slate-600 rounded-full border border-slate-700 shadow-inner"></div>
+
+        <div class="inline-flex items-center justify-center p-3 bg-black/60 rounded-full border-2 border-amber-600/50 shadow-[0_0_20px_rgba(217,119,6,0.6)] mb-3">
+          <span class="text-3xl">📖</span>
+        </div>
+        <h1 class="text-2xl sm:text-4xl font-black text-transparent bg-clip-text bg-gradient-to-b from-amber-100 via-amber-300 to-amber-600 drop-shadow-[0_4px_4px_rgba(0,0,0,0.9)] tracking-[0.15em]">
+          霍格華茲班級魔法書局
+        </h1>
+        <p class="text-amber-400/80 text-xs sm:text-sm font-bold tracking-widest mt-2">
+          每翻開一頁，都是一次靈魂的魔法修行。
+        </p>
+      </div>
+    </header>
+
+    <!-- 導航分頁 -->
+    <nav class="flex justify-center gap-3 sm:gap-6 mb-8">
+      <button id="tab-library" onclick="switchTab('library')" class="tab-btn px-6 py-2.5 rounded-full font-bold text-sm tracking-wider transition-all duration-200 bg-gradient-to-r from-amber-700 to-amber-500 text-amber-50 shadow-[0_0_20px_rgba(217,119,6,0.5)] border border-amber-300 scale-105">
+        📚 魔導書庫
+      </button>
+      <button id="tab-wizards" onclick="switchTab('wizards')" class="tab-btn px-6 py-2.5 rounded-full font-bold text-sm tracking-wider transition-all duration-200 glass-panel text-slate-300 border border-slate-700 hover:text-indigo-200 hover:border-indigo-500/50">
+        🧙‍♂️ 魔法學徒
+      </button>
+      <button id="tab-admin" onclick="switchTab('admin')" class="tab-btn px-6 py-2.5 rounded-full font-bold text-sm tracking-wider transition-all duration-200 glass-panel text-slate-300 border border-slate-700 hover:text-rose-200 hover:border-rose-500/50">
+        ⚙️ 中控管理
+      </button>
+    </nav>
+
+    <!-- 視圖 1: 魔導書庫 -->
+    <section id="view-library" class="space-y-6">
+      <!-- 篩選列 -->
+      <div class="glass-panel border border-slate-800 rounded-2xl p-4 flex flex-col sm:flex-row gap-4 items-center justify-between">
+        <input type="text" id="book-search" oninput="filterBooks()" placeholder="🔍 搜尋魔導書名、作者或分類..." class="w-full sm:w-80 px-4 py-2 text-sm rounded-xl bg-black/60 border border-amber-900/50 text-slate-100 focus:outline-none focus:border-amber-400">
+        
+        <div class="flex flex-wrap gap-2 justify-center text-xs">
+          <button onclick="setCategory('全部')" class="cat-btn px-3 py-1.5 rounded-lg bg-amber-600/30 text-amber-300 border border-amber-500/60 font-bold">全部藏書</button>
+          <button onclick="setCategory('小達文西')" class="cat-btn px-3 py-1.5 rounded-lg bg-black/40 text-slate-400 border border-slate-800 hover:text-amber-200 font-bold">小達文西</button>
+          <button onclick="setCategory('學習百科')" class="cat-btn px-3 py-1.5 rounded-lg bg-black/40 text-slate-400 border border-slate-800 hover:text-amber-200 font-bold">學習百科</button>
+          <button onclick="setCategory('科學實驗王')" class="cat-btn px-3 py-1.5 rounded-lg bg-black/40 text-slate-400 border border-slate-800 hover:text-amber-200 font-bold">科學實驗王</button>
+          <button onclick="setCategory('歷史故事')" class="cat-btn px-3 py-1.5 rounded-lg bg-black/40 text-slate-400 border border-slate-800 hover:text-amber-200 font-bold">歷史故事</button>
+        </div>
+      </div>
+
+      <!-- 書籍列表網格 -->
+      <div id="books-grid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
+        <!-- 動態渲染 -->
+      </div>
+    </section>
+
+    <!-- 視圖 2: 魔法學徒 -->
+    <section id="view-wizards" class="hidden space-y-6">
+      <div class="glass-panel border border-indigo-900/40 rounded-2xl p-5 flex justify-between items-center">
+        <div>
+          <h3 class="text-xl font-black text-indigo-300 flex items-center">🧙‍♂️ 魔法學徒名冊 (5 位)</h3>
+          <p class="text-xs text-slate-400 mt-1">借閱魔導書達 30 分鐘並歸還，可獲得 +10 點魔力修行值</p>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+        <div class="glass-panel border border-indigo-900/40 rounded-2xl p-5 hover:border-indigo-400 transition-all flex flex-col justify-between">
+          <div class="flex items-center space-x-4 mb-4">
+            <div class="w-14 h-14 rounded-2xl bg-indigo-950 border border-indigo-500/40 flex items-center justify-center text-3xl shadow-inner">🧙‍♂️</div>
+            <div>
+              <span class="text-xs font-black text-indigo-400 bg-indigo-950 px-2 py-0.5 rounded border border-indigo-800/60">1 號</span>
+              <h4 class="text-base font-black text-slate-100 mt-1">亞瑟 (Arthur)</h4>
+            </div>
+          </div>
+          <div class="pt-3 border-t border-slate-800 flex justify-between items-center text-xs">
+            <span class="text-amber-400 font-bold">✨ 20 魔力</span>
+            <span class="text-slate-400">無借閱中書籍</span>
+          </div>
+        </div>
+
+        <div class="glass-panel border border-indigo-500/60 rounded-2xl p-5 shadow-[0_0_20px_rgba(79,70,229,0.2)] flex flex-col justify-between">
+          <div class="flex items-center space-x-4 mb-4">
+            <div class="w-14 h-14 rounded-2xl bg-indigo-950 border border-indigo-500/40 flex items-center justify-center text-3xl shadow-inner">🧚‍♀️</div>
+            <div>
+              <span class="text-xs font-black text-indigo-400 bg-indigo-950 px-2 py-0.5 rounded border border-indigo-800/60">2 號</span>
+              <h4 class="text-base font-black text-indigo-200 mt-1">露娜 (Luna)</h4>
+            </div>
+          </div>
+          <div class="pt-3 border-t border-slate-800 flex justify-between items-center text-xs">
+            <span class="text-amber-400 font-bold">✨ 50 魔力</span>
+            <span class="text-indigo-300 font-bold">借閱中: 《人體運作大解密》</span>
+          </div>
+        </div>
+
+        <div class="glass-panel border border-indigo-900/40 rounded-2xl p-5 hover:border-indigo-400 transition-all flex flex-col justify-between">
+          <div class="flex items-center space-x-4 mb-4">
+            <div class="w-14 h-14 rounded-2xl bg-indigo-950 border border-indigo-500/40 flex items-center justify-center text-3xl shadow-inner">🧛‍♂️</div>
+            <div>
+              <span class="text-xs font-black text-indigo-400 bg-indigo-950 px-2 py-0.5 rounded border border-indigo-800/60">3 號</span>
+              <h4 class="text-base font-black text-slate-100 mt-1">賽門 (Simon)</h4>
+            </div>
+          </div>
+          <div class="pt-3 border-t border-slate-800 flex justify-between items-center text-xs">
+            <span class="text-amber-400 font-bold">✨ 10 魔力</span>
+            <span class="text-slate-400">無借閱中書籍</span>
+          </div>
+        </div>
+
+        <div class="glass-panel border border-indigo-900/40 rounded-2xl p-5 hover:border-indigo-400 transition-all flex flex-col justify-between">
+          <div class="flex items-center space-x-4 mb-4">
+            <div class="w-14 h-14 rounded-2xl bg-indigo-950 border border-indigo-500/40 flex items-center justify-center text-3xl shadow-inner">🧝‍♀️</div>
+            <div>
+              <span class="text-xs font-black text-indigo-400 bg-indigo-950 px-2 py-0.5 rounded border border-indigo-800/60">4 號</span>
+              <h4 class="text-base font-black text-slate-100 mt-1">艾爾莎 (Elsa)</h4>
+            </div>
+          </div>
+          <div class="pt-3 border-t border-slate-800 flex justify-between items-center text-xs">
+            <span class="text-amber-400 font-bold">✨ 0 魔力</span>
+            <span class="text-slate-400">無借閱中書籍</span>
+          </div>
+        </div>
+
+        <div class="glass-panel border border-indigo-900/40 rounded-2xl p-5 hover:border-indigo-400 transition-all flex flex-col justify-between">
+          <div class="flex items-center space-x-4 mb-4">
+            <div class="w-14 h-14 rounded-2xl bg-indigo-950 border border-indigo-500/40 flex items-center justify-center text-3xl shadow-inner">🧞‍♂️</div>
+            <div>
+              <span class="text-xs font-black text-indigo-400 bg-indigo-950 px-2 py-0.5 rounded border border-indigo-800/60">5 號</span>
+              <h4 class="text-base font-black text-slate-100 mt-1">奧立佛 (Oliver)</h4>
+            </div>
+          </div>
+          <div class="pt-3 border-t border-slate-800 flex justify-between items-center text-xs">
+            <span class="text-amber-400 font-bold">✨ 30 魔力</span>
+            <span class="text-slate-400">無借閱中書籍</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 視圖 3: 中控室 -->
+    <section id="view-admin" class="hidden space-y-6">
+      <div class="glass-panel border border-rose-900/40 rounded-2xl p-5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h3 class="text-xl font-black text-rose-300 flex items-center">⚙️ 中控管理室</h3>
+          <p class="text-xs text-slate-400 mt-1">管理魔導書庫藏書、學徒名冊與各項魔法系統設定</p>
+        </div>
+        <div class="flex gap-2">
+          <button class="px-4 py-2 bg-gradient-to-r from-emerald-700 to-emerald-500 text-white rounded-xl text-xs font-bold shadow">＋ 收錄新書</button>
+          <button class="px-4 py-2 bg-gradient-to-r from-indigo-700 to-indigo-500 text-white rounded-xl text-xs font-bold shadow">📥 批量匯入</button>
+        </div>
+      </div>
+
+      <div class="glass-panel border border-slate-800 rounded-2xl p-6 space-y-4">
+        <h4 class="text-sm font-bold text-slate-200">現有分類管理 (9 類)</h4>
+        <div class="flex flex-wrap gap-2">
+          <span class="px-3 py-1 rounded-lg bg-black/50 border border-slate-700 text-xs text-slate-300">月刊：小達文西</span>
+          <span class="px-3 py-1 rounded-lg bg-black/50 border border-slate-700 text-xs text-slate-300">月刊：未來少年</span>
+          <span class="px-3 py-1 rounded-lg bg-black/50 border border-slate-700 text-xs text-slate-300">i 學習百科：天文與地理</span>
+          <span class="px-3 py-1 rounded-lg bg-black/50 border border-slate-700 text-xs text-slate-300">i 學習百科：自然與健康</span>
+          <span class="px-3 py-1 rounded-lg bg-black/50 border border-slate-700 text-xs text-slate-300">歷史故事</span>
+          <span class="px-3 py-1 rounded-lg bg-black/50 border border-slate-700 text-xs text-slate-300">科學實驗王</span>
+        </div>
+      </div>
+
+      <!-- 國定假日與放假日期排除（位置：館藏書目管理框與學期重置框之間） -->
+      <div class="glass-panel border border-amber-900/40 rounded-2xl p-6">
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-4 border-b border-amber-900/30 pb-4">
+          <div>
+            <h3 class="text-lg font-black text-amber-300 flex items-center">
+              📅 國定假日與放假日期排除設定
+              <span id="holiday-count" class="text-xs text-amber-400/80 ml-2 font-bold">(2 天已排定)</span>
+            </h3>
+            <p class="text-xs text-slate-400 mt-1">
+              在此設定的放假日期將完全排除借閱時長計算（週末自動排除），防止放假期間刷時長。
+            </p>
+          </div>
+        </div>
+
+        <!-- 新增放假日表單 -->
+        <div class="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center mb-6">
+          <div class="flex items-center space-x-2">
+            <span class="text-xs font-bold text-slate-300 shrink-0">放假日期：</span>
+            <input type="date" id="input-holiday-date" class="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-amber-400" />
+          </div>
+          <div class="flex-1 flex items-center space-x-2">
+            <span class="text-xs font-bold text-slate-300 shrink-0">節日名稱：</span>
+            <input type="text" id="input-holiday-name" placeholder="例：中秋連假、國慶日、校慶補假..." class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-amber-400" />
+          </div>
+          <button onclick="addHolidayFromPreview()" class="px-4 py-2 bg-gradient-to-r from-amber-700 to-amber-500 hover:from-amber-600 text-amber-50 rounded-xl font-bold text-xs shadow flex items-center justify-center shrink-0 border border-amber-400/40">
+            ＋ 新增放假日
+          </button>
+        </div>
+
+        <!-- 放假標籤清單 -->
+        <div class="mb-6">
+          <h4 class="text-xs font-bold text-slate-300 mb-2.5">已排定的排除放假日期：</h4>
+          <div id="holidays-container" class="flex flex-wrap gap-2">
+            <!-- JS 渲染 -->
+          </div>
+        </div>
+
+        <!-- 生效時段清單說明 -->
+        <div class="bg-black/40 border border-slate-800 rounded-xl p-4">
+          <div class="flex items-center text-xs font-bold text-amber-400 mb-2">
+            ⏰ 系統目前僅在以下早自修與下課時段計算修行時長（上課、午休與週末一律不計入）：
+          </div>
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
+            <div class="bg-slate-900/60 border border-slate-800 px-2.5 py-1.5 rounded-lg flex items-center justify-between">
+              <span class="text-slate-300 font-bold">早自修</span>
+              <span class="text-amber-300 font-mono font-semibold">08:00~08:30</span>
+            </div>
+            <div class="bg-slate-900/60 border border-slate-800 px-2.5 py-1.5 rounded-lg flex items-center justify-between">
+              <span class="text-slate-300 font-bold">第一節下課</span>
+              <span class="text-amber-300 font-mono font-semibold">09:10~09:20</span>
+            </div>
+            <div class="bg-slate-900/60 border border-slate-800 px-2.5 py-1.5 rounded-lg flex items-center justify-between">
+              <span class="text-slate-300 font-bold">第二節下課</span>
+              <span class="text-amber-300 font-mono font-semibold">10:00~10:20</span>
+            </div>
+            <div class="bg-slate-900/60 border border-slate-800 px-2.5 py-1.5 rounded-lg flex items-center justify-between">
+              <span class="text-slate-300 font-bold">第三節下課</span>
+              <span class="text-amber-300 font-mono font-semibold">11:00~11:10</span>
+            </div>
+            <div class="bg-slate-900/60 border border-slate-800 px-2.5 py-1.5 rounded-lg flex items-center justify-between">
+              <span class="text-slate-300 font-bold">午休下課</span>
+              <span class="text-amber-300 font-mono font-semibold">13:20~13:30</span>
+            </div>
+            <div class="bg-slate-900/60 border border-slate-800 px-2.5 py-1.5 rounded-lg flex items-center justify-between">
+              <span class="text-slate-300 font-bold">第五節下課</span>
+              <span class="text-amber-300 font-mono font-semibold">14:10~14:20</span>
+            </div>
+            <div class="bg-slate-900/60 border border-slate-800 px-2.5 py-1.5 rounded-lg flex items-center justify-between">
+              <span class="text-slate-300 font-bold">第六節下課</span>
+              <span class="text-amber-300 font-mono font-semibold">15:00~15:10</span>
+            </div>
+            <div class="bg-rose-950/30 border border-rose-900/40 px-2.5 py-1.5 rounded-lg flex items-center justify-between">
+              <span class="text-rose-300 font-bold">午休時間</span>
+              <span class="text-rose-400 font-mono font-semibold">禁止計算</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="glass-panel border border-rose-900/60 rounded-2xl p-6 flex items-center justify-between">
+        <div>
+          <h4 class="text-base font-bold text-rose-400 flex items-center gap-2">⚠️ 禁忌魔法警告</h4>
+          <p class="text-xs text-slate-300 mt-1">此動作將歸零所有學徒的魔力值並銷毀全部借閱日誌，無法復原。</p>
+        </div>
+        <button class="px-4 py-2 bg-rose-800/80 hover:bg-rose-700 text-rose-100 rounded-xl text-xs font-bold border border-rose-600/50">
+          施展禁忌重置
+        </button>
+      </div>
+    </section>
+
+    <!-- 頁尾 -->
+    <footer class="text-center mt-12 pb-8 text-xs text-amber-500/80 font-bold tracking-widest">
+      <p>✨ Created by 怡臻老師 ✨</p>
+    </footer>
+  </div>
+
+  <!-- 借閱彈窗 -->
+  <div id="modal" class="fixed inset-0 bg-black/80 backdrop-blur-md hidden items-center justify-center p-4 z-50">
+    <div class="glass-panel border border-amber-600/60 rounded-3xl p-6 max-w-sm w-full text-center space-y-4 shadow-[0_0_50px_rgba(217,119,6,0.3)]">
+      <div class="text-4xl">📜</div>
+      <h3 id="modal-title" class="text-lg font-black text-amber-200">締結借閱契約</h3>
+      <p id="modal-desc" class="text-xs text-slate-300 leading-relaxed"></p>
+      
+      <div class="text-left">
+        <label class="text-xs text-slate-400 block mb-1 font-bold">選擇借閱學徒：</label>
+        <select id="modal-student" class="w-full bg-black/60 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-amber-400">
+          <option value="亞瑟 (Arthur)">1 號 亞瑟 (Arthur)</option>
+          <option value="賽門 (Simon)">3 號 賽門 (Simon)</option>
+          <option value="艾爾莎 (Elsa)">4 號 艾爾莎 (Elsa)</option>
+          <option value="奧立佛 (Oliver)">5 號 奧立佛 (Oliver)</option>
+        </select>
+      </div>
+
+      <div class="flex gap-2 pt-2">
+        <button onclick="closeModal()" class="flex-1 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold border border-slate-600">取消</button>
+        <button onclick="confirmBorrow()" class="flex-1 py-2 bg-gradient-to-r from-amber-700 to-amber-500 text-white rounded-xl text-xs font-bold shadow-lg">確認借出</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const sampleBooks = [
+      { id: 'b1', title: '《小達文西 10月號》', category: '月刊：小達文西', author: '科學工坊', cover: 'bg-blue-900', status: 'available' },
+      { id: 'b2', title: '《小達文西 11月號》', category: '月刊：小達文西', author: '科學工坊', cover: 'bg-cyan-900', status: 'available' },
+      { id: 'b4', title: '《未來少年 10月號》', category: '月刊：未來少年', author: '未來編輯部', cover: 'bg-indigo-900', status: 'available' },
+      { id: 'b6', title: '《太陽系的奧秘》', category: '學習百科', author: '天文學家', cover: 'bg-slate-800', status: 'available' },
+      { id: 'b8', title: '《人體運作大解密》', category: '學習百科', author: '醫療中心', cover: 'bg-red-900', status: 'borrowed', borrower: '露娜' },
+      { id: 'b10', title: '《改變世界的發明》', category: '學習百科', author: '科技期刊', cover: 'bg-amber-900', status: 'available' },
+      { id: 'b16', title: '《三國演義精華》', category: '歷史故事', author: '羅貫中', cover: 'bg-red-800', status: 'available' },
+      { id: 'b19', title: '《科學實驗王1：酸鹼中和》', category: '科學實驗王', author: '科學漫畫家', cover: 'bg-emerald-800', status: 'available' }
+    ];
+
+    let currentCategory = '全部';
+    let selectedBook = null;
+
+    function renderBooks() {
+      const grid = document.getElementById('books-grid');
+      const search = (document.getElementById('book-search').value || '').toLowerCase();
+
+      const filtered = sampleBooks.filter(b => {
+        const matchCat = currentCategory === '全部' || b.category.includes(currentCategory);
+        const matchSearch = b.title.toLowerCase().includes(search) || b.author.toLowerCase().includes(search);
+        return matchCat && matchSearch;
+      });
+
+      grid.innerHTML = filtered.map(b => {
+        const isAvailable = b.status === 'available';
+        return `
+          <div class="glass-panel border border-[#8b6508]/30 rounded-2xl overflow-hidden shadow-[0_8px_30px_rgba(0,0,0,0.5)] flex flex-col group hover:border-amber-400/80 transition-all duration-300">
+            <div class="${b.cover} h-28 p-3 flex items-center justify-center relative book-spine text-center">
+              <span class="text-sm sm:text-base font-black text-amber-50 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] line-clamp-2 px-2">${b.title}</span>
+            </div>
+            <div class="p-4 flex flex-col flex-1 justify-between text-xs bg-gradient-to-b from-transparent to-black/40">
+              <div>
+                <span class="inline-block text-[11px] font-bold text-amber-400 bg-black/60 px-2.5 py-1 rounded-md border border-amber-900/50">${b.category}</span>
+                <p class="text-slate-300 text-xs mt-2.5 flex items-center font-medium">
+                  <span class="mr-1 text-slate-500">✍️</span>
+                  <span class="truncate">${b.author}</span>
+                </p>
+              </div>
+              <div class="mt-4">
+                ${isAvailable ? `
+                  <button onclick="openBorrowModal('${b.id}')" class="w-full py-2.5 bg-gradient-to-r from-amber-700 to-amber-600 hover:from-amber-600 hover:to-amber-500 text-amber-50 font-bold rounded-xl text-xs shadow-[0_0_15px_rgba(217,119,6,0.3)] border border-amber-500/50 flex items-center justify-center gap-1.5 transition-all">
+                    <span>📖</span> 點我借閱
+                  </button>
+                ` : `
+                  <div class="w-full py-2.5 bg-black/50 text-rose-400/90 font-bold rounded-xl text-xs border border-rose-900/30 text-center">
+                    🔒 被 ${b.borrower} 借走
+                  </div>
+                `}
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function switchTab(tab) {
+      ['library', 'wizards', 'admin'].forEach(t => {
+        document.getElementById(`view-${t}`).classList.toggle('hidden', t !== tab);
+        const btn = document.getElementById(`tab-${t}`);
+        if (t === tab) {
+          const colorMap = {
+            library: 'from-amber-700 to-amber-500 text-amber-50 border-amber-300 shadow-[0_0_20px_rgba(217,119,6,0.5)]',
+            wizards: 'from-indigo-700 to-indigo-500 text-indigo-50 border-indigo-300 shadow-[0_0_20px_rgba(79,70,229,0.5)]',
+            admin: 'from-rose-800 to-rose-600 text-rose-50 border-rose-300 shadow-[0_0_20px_rgba(225,29,72,0.5)]'
+          };
+          btn.className = `tab-btn px-6 py-2.5 rounded-full font-bold text-sm tracking-wider transition-all duration-200 bg-gradient-to-r ${colorMap[t]} border scale-105`;
+        } else {
+          btn.className = `tab-btn px-6 py-2.5 rounded-full font-bold text-sm tracking-wider transition-all duration-200 glass-panel text-slate-300 border border-slate-700 hover:text-slate-100`;
+        }
+      });
+    }
+
+    function setCategory(cat) {
+      currentCategory = cat;
+      document.querySelectorAll('.cat-btn').forEach(el => {
+        const isMatch = el.textContent.includes(cat) || (cat === '全部' && el.textContent.includes('全部'));
+        el.className = isMatch
+          ? 'cat-btn px-3 py-1.5 rounded-lg bg-amber-600/30 text-amber-300 border border-amber-500/60 font-bold'
+          : 'cat-btn px-3 py-1.5 rounded-lg bg-black/40 text-slate-400 border border-slate-800 hover:text-amber-200 font-bold';
+      });
+      renderBooks();
+    }
+
+    function filterBooks() {
+      renderBooks();
+    }
+
+    function openBorrowModal(bookId) {
+      selectedBook = sampleBooks.find(b => b.id === bookId);
+      if (!selectedBook) return;
+      document.getElementById('modal-title').textContent = `借閱契約：${selectedBook.title}`;
+      document.getElementById('modal-desc').textContent = `確認借閱《${selectedBook.title}》？學徒研讀達 30 分鐘歸還將獲取 +10 點魔力修行值！`;
+      const modal = document.getElementById('modal');
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+    }
+
+    function closeModal() {
+      const modal = document.getElementById('modal');
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+      selectedBook = null;
+    }
+
+    function confirmBorrow() {
+      if (selectedBook) {
+        const studentName = document.getElementById('modal-student').value;
+        selectedBook.status = 'borrowed';
+        selectedBook.borrower = studentName.split(' ')[1] || studentName;
+        renderBooks();
+      }
+      closeModal();
+    }
+
+    // 假日時段設定模擬
+    let sampleHolidays = [
+      { id: 'h1', date: '2026-10-10', name: '國慶日' },
+      { id: 'h2', date: '2026-09-28', name: '教師節補假' }
+    ];
+
+    function renderHolidays() {
+      const container = document.getElementById('holidays-container');
+      const countEl = document.getElementById('holiday-count');
+      if (!container) return;
+      if (countEl) countEl.textContent = `(${sampleHolidays.length} 天已排定)`;
+
+      if (sampleHolidays.length === 0) {
+        container.innerHTML = `<p class="text-xs text-slate-500 italic bg-black/20 p-3 rounded-xl border border-slate-800/60 w-full">目前尚未設定特殊放假日。系統預設會在週六、週日自動停止計時。</p>`;
+        return;
+      }
+
+      container.innerHTML = sampleHolidays.map(h => `
+        <div class="bg-slate-900/90 border border-amber-900/50 hover:border-amber-500/70 rounded-xl px-3 py-1.5 flex items-center space-x-2 text-xs transition-colors shadow-sm">
+          <span class="text-amber-400">📅</span>
+          <span class="font-mono font-bold text-amber-200">${h.date}</span>
+          <span class="text-slate-300 font-semibold">${h.name}</span>
+          <button onclick="deleteHolidayFromPreview('${h.id}')" class="text-slate-500 hover:text-rose-400 transition-colors p-0.5 ml-1 font-bold" title="刪除放假日">✕</button>
+        </div>
+      `).join('');
+    }
+
+    function addHolidayFromPreview() {
+      const dateInput = document.getElementById('input-holiday-date');
+      const nameInput = document.getElementById('input-holiday-name');
+      const date = dateInput.value;
+      const name = nameInput.value.trim() || '放假日';
+      if (!date) {
+        alert('請先選擇放假日期！');
+        return;
+      }
+      sampleHolidays.push({ id: 'h_' + Date.now(), date, name });
+      sampleHolidays.sort((a, b) => a.date.localeCompare(b.date));
+      dateInput.value = '';
+      nameInput.value = '';
+      renderHolidays();
+    }
+
+    function deleteHolidayFromPreview(id) {
+      sampleHolidays = sampleHolidays.filter(h => h.id !== id);
+      renderHolidays();
+    }
+
+    renderBooks();
+    renderHolidays();
+  </script>
+</body>
+</html>
+
