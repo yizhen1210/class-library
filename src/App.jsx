@@ -32,7 +32,8 @@ import {
   deleteStudent,
   addHoliday,
   deleteHoliday,
-  resetAllData
+  resetAllData,
+  batchAuditAndRewardRecords
 } from "./services/libraryService";
 
 export default function App() {
@@ -299,6 +300,17 @@ export default function App() {
     }
   };
 
+  // 9/17~9/23 借閱時長審計與補發魔力點數
+  const handleAuditAndRewardRecords = async (options) => {
+    return await batchAuditAndRewardRecords({
+      records,
+      students,
+      books,
+      holidays,
+      ...options
+    });
+  };
+
   // 學期重置禁忌魔法
   const handleConfirmReset = async () => {
     setIsResetting(true);
@@ -389,7 +401,9 @@ export default function App() {
               books={books}
               students={students}
               categories={categories}
+              records={records}
               holidays={holidays}
+              onAuditAndRewardRecords={handleAuditAndRewardRecords}
               onAddBookClick={() => setIsAddBookOpen(true)}
               onEditBookClick={(book) => setEditingBook(book)}
               onDeleteBook={handleDeleteBook}

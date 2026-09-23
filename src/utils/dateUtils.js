@@ -1,4 +1,4 @@
-import { VALID_READING_INTERVALS } from "../constants/readingSchedule";
+import { VALID_READING_INTERVALS } from "../constants/readingSchedule.js";
 
 /**
  * 取得當前時間字串，格式為 YYYY-MM-DD HH:mm

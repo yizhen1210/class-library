@@ -270,7 +270,11 @@
       holidays: JSON.parse(localStorage.getItem("mock_holidays") || "null") || [
         { id: "h1", date: "2026-09-28", name: "教師節放假" },
         { id: "h2", date: "2026-10-10", name: "國慶日" }
-      ]
+      ],
+      auditStartDate: "2026-09-17",
+      auditEndDate: "2026-09-23",
+      auditFilter: "all",
+      auditFeedback: null
     };
 
     function saveState() {
@@ -424,13 +428,17 @@
       book.status = "available";
       book.borrowerId = null;
 
-      // 檢查是否超過 30 分鐘獎勵 +10 魔力
+      // 檢查修行達 30 分鐘以上獎勵 +10 魔力
       if (student) {
         const studentPastDurs = state.records
           .filter(r => r.studentId === student.id && r.bookId === bookId && r.status === "returned" && r.id !== activeRec?.id)
           .reduce((sum, r) => sum + (r.durationMinutes || 0), 0);
-        if (studentPastDurs <= 30 && (studentPastDurs + dur) > 30) {
+        const isDirect30Min = dur >= 30;
+        const isAccumulated30Min = studentPastDurs < 30 && (studentPastDurs + dur) >= 30;
+        const shouldReward = isDirect30Min || isAccumulated30Min;
+        if (shouldReward) {
           student.magicPoints = (Number(student.magicPoints) || 0) + 10;
+          if (activeRec) activeRec.rewarded = true;
         }
       }
 
@@ -592,6 +600,107 @@
         }
       }
       return dateStr;
+    }
+
+    // --- 9/17~9/23 借閱時長審計與補發魔力點數 ---
+    function computeAuditData() {
+      const start = state.auditStartDate || "2026-09-17";
+      const end = state.auditEndDate || "2026-09-23";
+      const now = getNowString();
+
+      const filtered = (state.records || []).filter(r => {
+        const b = (r.borrowDate || "").slice(0, 10);
+        const ret = (r.returnDate || "").slice(0, 10);
+        return (b >= start && b <= end) || (ret >= start && ret <= end);
+      });
+
+      const sorted = [...filtered].sort((a, b) => (a.borrowDate || "").localeCompare(b.borrowDate || ""));
+      const studentBookAccum = {};
+
+      const items = sorted.map(r => {
+        const student = state.students.find(s => s.id === r.studentId);
+        const book = state.books.find(b => b.id === r.bookId);
+        const endTime = r.returnDate || (r.status === "active" ? now : r.borrowDate);
+        const validMinutes = calculateValidMinutes(r.borrowDate, endTime);
+
+        const sbKey = `${r.studentId}_${r.bookId}`;
+        if (!studentBookAccum[sbKey]) {
+          studentBookAccum[sbKey] = { total: 0, rewarded: false };
+        }
+        const prevTotal = studentBookAccum[sbKey].total;
+        const nextTotal = prevTotal + validMinutes;
+        studentBookAccum[sbKey].total = nextTotal;
+
+        const isDirect30Min = validMinutes >= 30;
+        const isAccumulated30Min = prevTotal < 30 && nextTotal >= 30;
+        const isQualifying = isDirect30Min || isAccumulated30Min;
+        const isRewarded = Boolean(r.rewarded || studentBookAccum[sbKey].rewarded);
+        if (r.rewarded) {
+          studentBookAccum[sbKey].rewarded = true;
+        }
+        const needsReward = isQualifying && !isRewarded;
+
+        return {
+          record: r,
+          student,
+          book,
+          validMinutes,
+          isQualifying,
+          isRewarded,
+          needsReward
+        };
+      });
+
+      const studentDelta = {};
+      items.forEach(it => {
+        if (it.needsReward && it.student) {
+          studentDelta[it.student.id] = (studentDelta[it.student.id] || 0) + 10;
+        }
+      });
+
+      const totalPoints = Object.values(studentDelta).reduce((a, b) => a + b, 0);
+      const qualifyingCount = items.filter(it => it.isQualifying).length;
+      const needsRewardCount = items.filter(it => it.needsReward).length;
+      const pendingStudentsCount = Object.keys(studentDelta).length;
+
+      return {
+        items,
+        totalCount: items.length,
+        qualifyingCount,
+        needsRewardCount,
+        pendingStudentsCount,
+        studentDelta,
+        totalPoints
+      };
+    }
+
+    function executePreviewAuditAndReward() {
+      const data = computeAuditData();
+      if (data.needsRewardCount === 0) {
+        alert("目前沒有需要補發魔力點數的達標學徒。");
+        return;
+      }
+      if (!confirm(`確定要校正 ${data.qualifyingCount} 筆達標紀錄的時長，並為 ${data.pendingStudentsCount} 位學徒補發共 +${data.totalPoints} 點魔力嗎？`)) {
+        return;
+      }
+
+      data.items.forEach(it => {
+        it.record.durationMinutes = it.validMinutes;
+        if (it.isQualifying) {
+          it.record.rewarded = true;
+        }
+      });
+
+      Object.entries(data.studentDelta).forEach(([stId, pts]) => {
+        const st = state.students.find(s => s.id === stId);
+        if (st) {
+          st.magicPoints = (Number(st.magicPoints) || 0) + pts;
+        }
+      });
+
+      state.auditFeedback = `✨ 校正成功！已更新 ${data.qualifyingCount} 筆達標紀錄，成功補發 +${data.totalPoints} 點魔力！`;
+      saveState();
+      render();
     }
 
     // --- 主渲染器 ---
@@ -1306,6 +1415,219 @@
               `).join("")}
             </div>
           </div>
+
+          <!-- 9/17 ~ 9/23 借閱時長審計與魔力加點校正 -->
+          ${(() => {
+            const auditData = computeAuditData();
+            const filter = state.auditFilter || "all";
+            const visibleItems = auditData.items.filter(it => {
+              if (filter === "needsReward") return it.needsReward;
+              if (filter === "rewarded") return it.isQualifying && !it.needsReward;
+              if (filter === "notQualifying") return !it.isQualifying;
+              return true;
+            });
+            return `
+              <div class="glass-panel border border-amber-500/50 rounded-3xl p-6 sm:p-8 mb-8 shadow-[0_10px_35px_rgba(217,119,6,0.25)] bg-gradient-to-br from-amber-950/30 via-slate-900/90 to-slate-950">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+                  <div>
+                    <h3 class="text-xl sm:text-2xl font-black text-amber-400 flex items-center tracking-wider drop-shadow-sm">
+                      ✨ 9/17 ~ 9/23 借閱時長審計與魔力加點校正
+                    </h3>
+                    <p class="text-xs sm:text-sm text-amber-200/70 mt-1 font-medium leading-relaxed">
+                      依據課堂限定規範（排除上課、午休、週末與放假日），嚴格檢核指定區間之所有借閱紀錄。凡達 30 分鐘以上且尚未加點者，可一鍵補發魔力點數並校正紀錄時長。
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onclick="executePreviewAuditAndReward()"
+                    ${auditData.needsRewardCount === 0 ? 'disabled' : ''}
+                    class="px-6 py-3.5 rounded-2xl border font-black text-sm sm:text-base flex items-center justify-center shrink-0 transition-all shadow-[0_5px_20px_rgba(217,119,6,0.35)] ${
+                      auditData.needsRewardCount > 0
+                        ? 'bg-gradient-to-r from-amber-600 via-amber-500 to-amber-600 hover:from-amber-500 hover:to-amber-400 text-slate-950 border-amber-300 hover:scale-105 cursor-pointer'
+                        : 'bg-slate-800/80 text-slate-500 border-slate-700 cursor-not-allowed opacity-60'
+                    }"
+                  >
+                    ⚡ 一鍵校正並補發魔力 (${auditData.needsRewardCount} 筆待補發)
+                  </button>
+                </div>
+
+                ${state.auditFeedback ? `
+                  <div class="p-4 rounded-2xl mb-6 border bg-emerald-950/60 border-emerald-500/60 text-emerald-300 text-sm font-bold flex items-center gap-2">
+                    <span>${state.auditFeedback}</span>
+                  </div>
+                ` : ''}
+
+                <!-- 統計指標卡片 -->
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-6">
+                  <div class="bg-black/40 border border-amber-900/40 rounded-2xl p-4 flex flex-col justify-between">
+                    <span class="text-xs font-bold text-amber-200/70">區間內借閱總紀錄</span>
+                    <div class="mt-2 flex items-baseline gap-2">
+                      <span class="text-2xl sm:text-3xl font-black font-mono text-slate-100">${auditData.totalCount}</span>
+                      <span class="text-xs text-slate-400">筆</span>
+                    </div>
+                  </div>
+
+                  <div class="bg-black/40 border border-emerald-900/40 rounded-2xl p-4 flex flex-col justify-between">
+                    <span class="text-xs font-bold text-emerald-300/80">達 30 分鐘以上達標筆數</span>
+                    <div class="mt-2 flex items-baseline gap-2">
+                      <span class="text-2xl sm:text-3xl font-black font-mono text-emerald-400">${auditData.qualifyingCount}</span>
+                      <span class="text-xs text-emerald-300/60">筆達標</span>
+                    </div>
+                  </div>
+
+                  <div class="bg-black/40 border border-amber-600/50 rounded-2xl p-4 flex flex-col justify-between bg-gradient-to-br from-amber-950/40 to-transparent">
+                    <span class="text-xs font-bold text-amber-300">待補發魔力點數</span>
+                    <div class="mt-2 flex items-baseline gap-2">
+                      <span class="text-2xl sm:text-3xl font-black font-mono text-amber-400">+${auditData.totalPoints}</span>
+                      <span class="text-xs text-amber-300/80">點 (${auditData.pendingStudentsCount} 位學徒)</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 區間設定與篩選條件 -->
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 pb-4 border-b border-amber-900/30">
+                  <div class="flex flex-wrap items-center gap-2 text-xs">
+                    <span class="font-bold text-amber-300">審計日期區間：</span>
+                    <input
+                      type="date"
+                      value="${state.auditStartDate || '2026-09-17'}"
+                      onchange="state.auditStartDate = this.value; render();"
+                      style="color-scheme: dark;"
+                      class="bg-slate-900 border border-amber-700/60 rounded-xl px-2.5 py-1.5 text-amber-200 font-mono text-xs focus:outline-none focus:border-amber-400"
+                    />
+                    <span class="text-slate-500">至</span>
+                    <input
+                      type="date"
+                      value="${state.auditEndDate || '2026-09-23'}"
+                      onchange="state.auditEndDate = this.value; render();"
+                      style="color-scheme: dark;"
+                      class="bg-slate-900 border border-amber-700/60 rounded-xl px-2.5 py-1.5 text-amber-200 font-mono text-xs focus:outline-none focus:border-amber-400"
+                    />
+                    <button
+                      type="button"
+                      onclick="state.auditStartDate = '2026-09-17'; state.auditEndDate = '2026-09-23'; render();"
+                      class="px-2.5 py-1 bg-amber-950/60 hover:bg-amber-900 text-amber-300 border border-amber-700/50 rounded-lg text-[11px] font-bold transition-all"
+                    >
+                      重設 9/17~9/23
+                    </button>
+                  </div>
+
+                  <div class="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+                    <button
+                      type="button"
+                      onclick="state.auditFilter = 'all'; render();"
+                      class="px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 ${
+                        filter === 'all'
+                          ? 'bg-amber-500 text-slate-950 shadow'
+                          : 'bg-slate-900/80 text-slate-300 hover:bg-slate-800'
+                      }"
+                    >
+                      全部 (${auditData.totalCount})
+                    </button>
+                    <button
+                      type="button"
+                      onclick="state.auditFilter = 'needsReward'; render();"
+                      class="px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 ${
+                        filter === 'needsReward'
+                          ? 'bg-amber-500 text-slate-950 shadow'
+                          : 'bg-slate-900/80 text-amber-300 hover:bg-slate-800'
+                      }"
+                    >
+                      待補發 (${auditData.needsRewardCount})
+                    </button>
+                    <button
+                      type="button"
+                      onclick="state.auditFilter = 'rewarded'; render();"
+                      class="px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 ${
+                        filter === 'rewarded'
+                          ? 'bg-emerald-600 text-white shadow'
+                          : 'bg-slate-900/80 text-emerald-400 hover:bg-slate-800'
+                      }"
+                    >
+                      已獲加點 (${auditData.qualifyingCount - auditData.needsRewardCount})
+                    </button>
+                    <button
+                      type="button"
+                      onclick="state.auditFilter = 'notQualifying'; render();"
+                      class="px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 ${
+                        filter === 'notQualifying'
+                          ? 'bg-slate-700 text-white shadow'
+                          : 'bg-slate-900/80 text-slate-400 hover:bg-slate-800'
+                      }"
+                    >
+                      未達標 (${auditData.totalCount - auditData.qualifyingCount})
+                    </button>
+                  </div>
+                </div>
+
+                <!-- 紀錄明細列表 -->
+                <div class="space-y-2.5 max-h-80 overflow-y-auto pr-1.5 custom-scrollbar">
+                  ${visibleItems.length === 0 ? `
+                    <p class="text-slate-500 text-xs sm:text-sm text-center py-8 italic bg-black/20 rounded-2xl border border-dashed border-slate-800">
+                      在此篩選條件下沒有任何借閱紀錄。
+                    </p>
+                  ` : visibleItems.map(item => `
+                    <div class="bg-black/40 rounded-2xl p-3.5 sm:p-4 border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                      item.needsReward
+                        ? 'border-amber-500/60 bg-gradient-to-r from-amber-950/40 to-black/40'
+                        : item.isQualifying
+                        ? 'border-emerald-800/40 hover:border-emerald-700/60'
+                        : 'border-slate-800/50 hover:border-slate-700/50'
+                    }">
+                      <div class="min-w-0 flex-1">
+                        <div class="flex items-center gap-2 flex-wrap">
+                          <span class="font-mono text-amber-300 font-bold text-xs sm:text-sm">
+                            ${item.student?.seatNumber ? item.student.seatNumber + '號' : ''} ${item.student ? item.student.name : '未知學徒'}
+                          </span>
+                          <span class="text-slate-500 text-xs">|</span>
+                          <span class="font-bold text-slate-200 text-xs sm:text-sm truncate">
+                            📖 ${item.book ? item.book.title : '未知書目'}
+                          </span>
+                        </div>
+                        <div class="text-[11px] sm:text-xs text-slate-400 mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 font-mono">
+                          <span>借出：${item.record.borrowDate}</span>
+                          <span>歸還：${item.record.returnDate || (item.record.status === 'active' ? '借閱進行中' : '未記載')}</span>
+                          ${typeof item.record.durationMinutes === 'number' && item.record.durationMinutes !== item.validMinutes ? `
+                            <span class="text-amber-400/70">(原記：${item.record.durationMinutes}分)</span>
+                          ` : ''}
+                        </div>
+                      </div>
+
+                      <div class="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                        <div class="text-right">
+                          <div class="text-xs font-mono font-bold text-slate-300">
+                            有效修行：
+                            <span class="text-sm ${item.validMinutes >= 30 ? 'text-emerald-400 font-black' : 'text-amber-200/90'}">
+                              ${item.validMinutes}
+                            </span> 分鐘
+                          </div>
+                        </div>
+
+                        ${item.needsReward ? `
+                          <span class="px-3 py-1 bg-amber-950 text-amber-300 border border-amber-500/80 rounded-xl text-xs font-bold shadow-[0_0_10px_rgba(245,158,11,0.3)] animate-pulse flex items-center">
+                            ✨ 達標待補發 (+10)
+                          </span>
+                        ` : item.isQualifying ? `
+                          <span class="px-3 py-1 bg-emerald-950/70 text-emerald-300 border border-emerald-700/60 rounded-xl text-xs font-bold flex items-center">
+                            ✓ 達標已加點
+                          </span>
+                        ` : item.record.status === 'active' ? `
+                          <span class="px-3 py-1 bg-sky-950/60 text-sky-300 border border-sky-700/50 rounded-xl text-xs font-bold">
+                            進行中 (${item.validMinutes}分)
+                          </span>
+                        ` : `
+                          <span class="px-3 py-1 bg-slate-900/80 text-slate-400 border border-slate-700/50 rounded-xl text-xs font-bold">
+                            未達 30 分鐘
+                          </span>
+                        `}
+                      </div>
+                    </div>
+                  `).join('')}
+                </div>
+              </div>
+            `;
+          })()}
 
           <!-- 危險禁忌區 (學期重置) -->
           <div class="glass-panel border border-rose-900/50 rounded-3xl p-6 sm:p-8 bg-gradient-to-br from-rose-950/30 to-transparent flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6">

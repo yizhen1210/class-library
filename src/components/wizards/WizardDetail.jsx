@@ -35,7 +35,7 @@ export default function WizardDetail({
           : calculateValidReadingMinutes(r.borrowDate, r.returnDate, holidays);
       const prevTotal = bookDurationMap[r.bookId] || 0;
       const nextTotal = prevTotal + dur;
-      if (prevTotal <= DURATION_THRESHOLD_MINUTES && nextTotal > DURATION_THRESHOLD_MINUTES) {
+      if (r.rewarded || dur >= DURATION_THRESHOLD_MINUTES || (prevTotal < DURATION_THRESHOLD_MINUTES && nextTotal >= DURATION_THRESHOLD_MINUTES)) {
         rewardedRecordIds.add(r.id);
       }
       bookDurationMap[r.bookId] = nextTotal;

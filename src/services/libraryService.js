@@ -175,30 +175,41 @@ export function getAccumulatedReadingMinutes(studentId, bookId, records, holiday
 }
 
 /**
- * 歸還書籍（完成修行，滿 30 分鐘獎勵 10 點魔力，僅計入指定下課/早自修時段）
- * 支援多種調用傳參形式：
- * 1. (bookId, studentId, records, students, holidays)
- * 2. (bookId, studentId, books, students, records, holidays)
- * 3. (bookId, studentId, holidays)
+ * 歸還書籍（完成修行，滿 30 分鐘以上獎勵 10 點魔力，僅計入指定下課/早自修時段）
  */
 export async function returnBook(bookId, studentId, arg3, arg4, arg5, arg6) {
   let records = [];
   let students = [];
   let holidays = [];
 
-  if (Array.isArray(arg5)) {
-    // 6 參數模式: (bookId, studentId, books, students, records, holidays)
-    students = Array.isArray(arg4) ? arg4 : [];
-    records = Array.isArray(arg5) ? arg5 : [];
-    holidays = Array.isArray(arg6) ? arg6 : [];
-  } else if (Array.isArray(arg3) && Array.isArray(arg4)) {
-    // 5 參數模式: (bookId, studentId, records, students, holidays)
-    records = Array.isArray(arg3) ? arg3 : [];
-    students = Array.isArray(arg4) ? arg4 : [];
-    holidays = Array.isArray(arg5) ? arg5 : [];
-  } else if (Array.isArray(arg3)) {
-    // 3 參數模式: (bookId, studentId, holidays)
-    holidays = arg3;
+  // 智能解析傳入參數
+  const allArrays = [arg3, arg4, arg5, arg6].filter(Array.isArray);
+  for (const arr of allArrays) {
+    if (arr.length === 0) continue;
+    const first = arr[0];
+    if (typeof first === "string" || (first && "date" in first)) {
+      holidays = arr;
+    } else if (first && ("borrowDate" in first || "bookId" in first)) {
+      records = arr;
+    } else if (first && ("seatNumber" in first || "magicPoints" in first)) {
+      students = arr;
+    }
+  }
+
+  // 兜底長度處理
+  if (arguments.length >= 6) {
+    if (!students.length && Array.isArray(arg4)) students = arg4;
+    if (!records.length && Array.isArray(arg5)) records = arg5;
+    if (!holidays.length && Array.isArray(arg6)) holidays = arg6;
+  } else if (arguments.length === 5) {
+    if (!records.length && Array.isArray(arg3)) records = arg3;
+    if (!students.length && Array.isArray(arg4)) students = arg4;
+    if (!holidays.length && Array.isArray(arg5)) holidays = arg5;
+  } else if (arguments.length === 4) {
+    if (!records.length && Array.isArray(arg3)) records = arg3;
+    if (!students.length && Array.isArray(arg4)) students = arg4;
+  } else if (arguments.length === 3) {
+    if (!holidays.length && Array.isArray(arg3)) holidays = arg3;
   }
 
   const now = getCurrentDateTimeString();
@@ -229,11 +240,13 @@ export async function returnBook(bookId, studentId, arg3, arg4, arg5, arg6) {
 
   // 2. 尋找學徒資料 (student)
   let student = students.find((s) => s.id === studentId);
-  if (!student && studentId) {
+  let currentPoints = Number(student?.magicPoints || 0);
+  if (studentId) {
     try {
       const sDoc = await getDoc(doc(getStudentsCol(), studentId));
       if (sDoc.exists()) {
         student = { id: sDoc.id, ...sDoc.data() };
+        currentPoints = Number(sDoc.data().magicPoints || 0);
       }
     } catch (err) {
       console.warn("Firestore 查詢 student 警示:", err);
@@ -266,19 +279,28 @@ export async function returnBook(bookId, studentId, arg3, arg4, arg5, arg6) {
   }
 
   const totalMinutes = previousMinutes + duration;
-  const shouldReward =
-    previousMinutes <= DURATION_THRESHOLD_MINUTES &&
-    totalMinutes > DURATION_THRESHOLD_MINUTES;
+
+  // 有達 30 分鐘以上才給加點（單次借閱達 30 分鐘以上，或累計跨過 30 分鐘門檻）
+  const isDirect30Min = duration >= DURATION_THRESHOLD_MINUTES;
+  const isAccumulated30Min =
+    previousMinutes < DURATION_THRESHOLD_MINUTES &&
+    totalMinutes >= DURATION_THRESHOLD_MINUTES;
+  const shouldReward = isDirect30Min || isAccumulated30Min;
 
   const promises = [];
 
-  // 更新借閱紀錄為已歸還
+  // 更新借閱紀錄為已歸還，並標註有效閱讀分鐘與獎勵狀態
   if (activeRecord) {
     const recordRef = doc(getRecordsCol(), activeRecord.id);
     promises.push(
       setDoc(
         recordRef,
-        { returnDate: now, status: "returned", durationMinutes: duration },
+        {
+          returnDate: now,
+          status: "returned",
+          durationMinutes: duration,
+          rewarded: shouldReward
+        },
         { merge: true }
       )
     );
@@ -290,22 +312,163 @@ export async function returnBook(bookId, studentId, arg3, arg4, arg5, arg6) {
     setDoc(bookRef, { status: "available", borrowerId: null }, { merge: true })
   );
 
-  // 若修行滿 30 分鐘獎勵 10 點魔力
-  if (student && shouldReward) {
+  // 若修行滿 30 分鐘以上，獎勵 10 點魔力
+  if (studentId && shouldReward) {
     const studentRef = doc(getStudentsCol(), studentId);
     promises.push(
       setDoc(
         studentRef,
-        {
-          magicPoints:
-            Number(student.magicPoints || 0) + MAGIC_POINTS_REWARD
-        },
+        { magicPoints: currentPoints + MAGIC_POINTS_REWARD },
         { merge: true }
       )
     );
   }
 
   await Promise.all(promises);
+
+  return {
+    duration,
+    shouldReward,
+    magicPointsAdded: shouldReward ? MAGIC_POINTS_REWARD : 0
+  };
+}
+
+/**
+ * 檢查並核算指定日期區間（預設 2026-09-17 ~ 2026-09-23）的所有借閱紀錄，
+ * 依據課間限定規範重新計算有效修行時長，
+ * 並為達 30 分鐘以上但尚未獲得獎勵的紀錄進行補發加點。
+ */
+export async function batchAuditAndRewardRecords({
+  records = [],
+  students = [],
+  books = [],
+  holidays = [],
+  startDate = "2026-09-17",
+  endDate = "2026-09-23",
+  applyChanges = false
+}) {
+  const now = getCurrentDateTimeString();
+  const auditResults = [];
+  const studentPointsDelta = {}; // studentId -> points to add
+
+  // 篩選指定日期區間內的紀錄 (借閱日或歸還日介於區間內)
+  const filteredRecords = records.filter((r) => {
+    const bDate = (r.borrowDate || "").slice(0, 10);
+    const rDate = (r.returnDate || "").slice(0, 10);
+    return (
+      (bDate >= startDate && bDate <= endDate) ||
+      (rDate >= startDate && rDate <= endDate)
+    );
+  });
+
+  // 依借閱時間由舊至新排序，以便精確模擬修行累積歷程
+  const sortedRecords = [...filteredRecords].sort((a, b) =>
+    (a.borrowDate || "").localeCompare(b.borrowDate || "")
+  );
+
+  const studentBookAccum = {}; // `${studentId}_${bookId}` -> { total: number, rewarded: boolean }
+
+  sortedRecords.forEach((record) => {
+    const student = students.find((s) => s.id === record.studentId);
+    const book = books.find((b) => b.id === record.bookId);
+
+    // 計算依下課與早自修時段計算之有效分鐘數
+    const endTime =
+      record.returnDate || (record.status === "active" ? now : record.borrowDate);
+    const validMinutes = calculateValidReadingMinutes(
+      record.borrowDate,
+      endTime,
+      holidays
+    );
+
+    const sbKey = `${record.studentId}_${record.bookId}`;
+    if (!studentBookAccum[sbKey]) {
+      studentBookAccum[sbKey] = { total: 0, rewarded: false };
+    }
+    const prevTotal = studentBookAccum[sbKey].total;
+    const nextTotal = prevTotal + validMinutes;
+    studentBookAccum[sbKey].total = nextTotal;
+
+    // 檢查是否達 30 分鐘以上門檻（單次達 30 分鐘，或累計跨過 30 分鐘門檻）
+    const isDirect30Min = validMinutes >= DURATION_THRESHOLD_MINUTES;
+    const isAccumulated30Min =
+      prevTotal < DURATION_THRESHOLD_MINUTES &&
+      nextTotal >= DURATION_THRESHOLD_MINUTES;
+    const isQualifying = isDirect30Min || isAccumulated30Min;
+
+    const isRewarded = Boolean(record.rewarded || studentBookAccum[sbKey].rewarded);
+    if (record.rewarded) {
+      studentBookAccum[sbKey].rewarded = true;
+    }
+
+    // 是否需要補發魔力點數 (達 30 分鐘以上且尚未獲得獎勵)
+    const needsReward = isQualifying && !isRewarded;
+
+    if (needsReward && record.studentId) {
+      studentPointsDelta[record.studentId] =
+        (studentPointsDelta[record.studentId] || 0) + MAGIC_POINTS_REWARD;
+      studentBookAccum[sbKey].rewarded = true;
+    }
+
+    // 檢查原本紀錄是否有儲存 durationMinutes
+    const currentDuration =
+      typeof record.durationMinutes === "number" ? record.durationMinutes : null;
+    const isDurationOutdated = currentDuration !== validMinutes;
+
+    auditResults.push({
+      recordId: record.id,
+      studentId: record.studentId,
+      studentName: student?.name || "未知學徒",
+      seatNumber: student?.seatNumber || "",
+      bookTitle: book?.title || "未知書目",
+      borrowDate: record.borrowDate,
+      returnDate:
+        record.returnDate ||
+        (record.status === "active" ? "借閱進行中" : "未記載"),
+      status: record.status,
+      currentDuration,
+      validMinutes,
+      isQualifying,
+      isRewarded,
+      needsReward,
+      isDurationOutdated
+    });
+  });
+
+  // 如果 applyChanges 為 true，直接寫入 Firestore
+  if (applyChanges) {
+    const recordPromises = auditResults.map((item) => {
+      const recRef = doc(getRecordsCol(), item.recordId);
+      const updateData = { durationMinutes: item.validMinutes };
+      if (item.isQualifying) {
+        updateData.rewarded = true;
+      }
+      return setDoc(recRef, updateData, { merge: true });
+    });
+
+    const studentPromises = Object.entries(studentPointsDelta).map(
+      async ([stId, delta]) => {
+        if (delta <= 0) return;
+        const stRef = doc(getStudentsCol(), stId);
+        const stSnap = await getDoc(stRef);
+        const curPts = stSnap.exists()
+          ? Number(stSnap.data().magicPoints || 0)
+          : 0;
+        return setDoc(stRef, { magicPoints: curPts + delta }, { merge: true });
+      }
+    );
+
+    await Promise.all([...recordPromises, ...studentPromises]);
+  }
+
+  return {
+    totalChecked: filteredRecords.length,
+    qualifyingCount: auditResults.filter((r) => r.isQualifying).length,
+    needsRewardCount: auditResults.filter((r) => r.needsReward).length,
+    totalPointsToAward: Object.values(studentPointsDelta).reduce((a, b) => a + b, 0),
+    studentPointsDelta,
+    details: auditResults
+  };
 }
 
 /**
