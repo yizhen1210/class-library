@@ -3,10 +3,13 @@
 @tailwind utilities;
 
 @layer base {
-  html, body {
+  *, ::before, ::after {
+    font-family: 'Iansui', ui-sans-serif, system-ui, sans-serif !important;
+  }
+  html, body, input, select, textarea, button {
     background-color: #020617;
     color: #f8fafc;
-    font-family: 'Iansui', ui-sans-serif, system-ui, sans-serif;
+    font-family: 'Iansui', ui-sans-serif, system-ui, sans-serif !important;
     padding-top: env(safe-area-inset-top);
     padding-left: env(safe-area-inset-left);
     padding-right: env(safe-area-inset-right);

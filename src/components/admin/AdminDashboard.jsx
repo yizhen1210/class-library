@@ -15,24 +15,18 @@ import {
   LoaderCircle,
   Calendar,
   Clock,
-  Info,
-  Sparkles,
-  CheckCircle2,
-  AlertCircle
+  Info
 } from "lucide-react";
 import { naturalCompare } from "../../utils/textUtils";
 import { BOOK_COVERS } from "../../constants/bookCovers";
 import { WIZARD_AVATARS } from "../../constants/avatars";
 import { VALID_READING_INTERVALS } from "../../constants/readingSchedule";
-import { getCurrentDateTimeString, calculateValidReadingMinutes } from "../../utils/dateUtils";
 
 export default function AdminDashboard({
   books,
   students,
   categories,
-  records = [],
   holidays = [],
-  onAuditAndRewardRecords,
   onAddBookClick,
   onEditBookClick,
   onDeleteBook,
@@ -161,150 +155,6 @@ export default function AdminDashboard({
       }
     }
     return dateStr;
-  };
-
-  // 9/17~9/23 借閱時長審計與魔力加點狀態
-  const [auditStartDate, setAuditStartDate] = useState("2026-09-17");
-  const [auditEndDate, setAuditEndDate] = useState("2026-09-23");
-  const [auditFilter, setAuditFilter] = useState("all"); // 'all' | 'needsReward' | 'rewarded' | 'notQualifying'
-  const [isAuditing, setIsAuditing] = useState(false);
-  const [auditFeedback, setAuditFeedback] = useState(null);
-
-  // 審計分析計算 (即時根據 records, books, students, holidays, 區間動態計算)
-  const auditAnalysis = useMemo(() => {
-    const now = getCurrentDateTimeString();
-    const filteredRecords = records.filter((r) => {
-      const bDate = (r.borrowDate || "").slice(0, 10);
-      const rDate = (r.returnDate || "").slice(0, 10);
-      return (
-        (bDate >= auditStartDate && bDate <= auditEndDate) ||
-        (rDate >= auditStartDate && rDate <= auditEndDate)
-      );
-    });
-
-    // 依借閱時間排序
-    const sorted = [...filteredRecords].sort((a, b) =>
-      (a.borrowDate || "").localeCompare(b.borrowDate || "")
-    );
-
-    // 統計每個學徒對每本書的累積修行時長與是否已獲得加點
-    const studentBookAccum = {}; // `${studentId}_${bookId}` -> { total: number, rewarded: boolean }
-
-    const items = sorted.map((record) => {
-      const student = students.find((s) => s.id === record.studentId);
-      const book = books.find((b) => b.id === record.bookId);
-      const endTime =
-        record.returnDate || (record.status === "active" ? now : record.borrowDate);
-      const validMinutes = calculateValidReadingMinutes(
-        record.borrowDate,
-        endTime,
-        holidays
-      );
-
-      const sbKey = `${record.studentId}_${record.bookId}`;
-      if (!studentBookAccum[sbKey]) {
-        studentBookAccum[sbKey] = { total: 0, rewarded: false };
-      }
-      const prevTotal = studentBookAccum[sbKey].total;
-      const nextTotal = prevTotal + validMinutes;
-      studentBookAccum[sbKey].total = nextTotal;
-
-      // 判定是否達標（單次達 30 分鐘，或累計跨過 30 分鐘門檻）
-      const isSingleQualifying = validMinutes >= 30;
-      const isAccumQualifying = prevTotal < 30 && nextTotal >= 30;
-      const isQualifying = isSingleQualifying || isAccumQualifying;
-
-      // 判定是否已經獲得魔力獎勵
-      const isRewarded = Boolean(record.rewarded || studentBookAccum[sbKey].rewarded);
-      if (record.rewarded) {
-        studentBookAccum[sbKey].rewarded = true;
-      }
-
-      // 是否需要補發加點
-      const needsReward = isQualifying && !isRewarded;
-
-      const currentDuration =
-        typeof record.durationMinutes === "number" ? record.durationMinutes : null;
-
-      return {
-        record,
-        recordId: record.id,
-        studentId: record.studentId,
-        studentName: student?.name || "未知學徒",
-        seatNumber: student?.seatNumber || "",
-        studentAvatar: student?.avatar,
-        bookTitle: book?.title || "未知書目",
-        borrowDate: record.borrowDate,
-        returnDate:
-          record.returnDate ||
-          (record.status === "active" ? "進行中" : "未記載"),
-        status: record.status,
-        validMinutes,
-        currentDuration,
-        isQualifying,
-        isRewarded,
-        needsReward
-      };
-    });
-
-    const studentPendingPoints = {};
-    items.forEach((item) => {
-      if (item.needsReward && item.studentId) {
-        studentPendingPoints[item.studentId] =
-          (studentPendingPoints[item.studentId] || 0) + 10;
-      }
-    });
-
-    const totalPointsToAward = Object.values(studentPendingPoints).reduce(
-      (a, b) => a + b,
-      0
-    );
-    const qualifyingCount = items.filter((i) => i.isQualifying).length;
-    const needsRewardCount = items.filter((i) => i.needsReward).length;
-    const pendingStudentsCount = Object.keys(studentPendingPoints).length;
-
-    return {
-      items,
-      totalCount: items.length,
-      qualifyingCount,
-      needsRewardCount,
-      pendingStudentsCount,
-      totalPointsToAward,
-      studentPendingPoints
-    };
-  }, [records, students, books, holidays, auditStartDate, auditEndDate]);
-
-  const handleExecuteAuditAndReward = async () => {
-    if (!onAuditAndRewardRecords) return;
-    if (
-      !window.confirm(
-        `確定要為 ${auditStartDate} ~ ${auditEndDate} 期間的所有借閱紀錄進行時長校正，並為達 30 分鐘以上的學徒發放魔力點數嗎？\n\n預計補發人數：${auditAnalysis.pendingStudentsCount} 位\n預計補發總魔力：+${auditAnalysis.totalPointsToAward} 點`
-      )
-    ) {
-      return;
-    }
-
-    setIsAuditing(true);
-    setAuditFeedback(null);
-    try {
-      const res = await onAuditAndRewardRecords({
-        startDate: auditStartDate,
-        endDate: auditEndDate,
-        applyChanges: true
-      });
-      setAuditFeedback({
-        type: "success",
-        message: `✨ 校正成功！已更新 ${res.qualifyingCount} 筆達標紀錄時長，成功為 ${Object.keys(res.studentPointsDelta || {}).length} 位學徒補發共 +${res.totalPointsToAward} 點魔力！`
-      });
-    } catch (err) {
-      console.error("審計校正失敗:", err);
-      setAuditFeedback({
-        type: "error",
-        message: `校正失敗：${err.message || "請檢查網路連線或稍後再試。"}`
-      });
-    } finally {
-      setIsAuditing(false);
-    }
   };
 
   // 解除結界驗證
@@ -498,7 +348,7 @@ export default function AdminDashboard({
             onChange={(e) => setBatchText(e.target.value)}
             rows={6}
             placeholder="書名 / 作者 / 類別 / 複本數"
-            className="w-full bg-black/50 border-2 border-slate-700 rounded-xl p-4 text-slate-100 text-sm focus:outline-none focus:border-sky-500 shadow-inner font-mono leading-relaxed resize-y flex-grow"
+            className="w-full bg-black/50 border-2 border-slate-700 rounded-xl p-4 text-slate-100 text-sm focus:outline-none focus:border-sky-500 shadow-inner leading-relaxed resize-y flex-grow"
           />
           <div className="flex flex-col sm:flex-row sm:items-center gap-3 mt-4">
             <button
@@ -899,7 +749,7 @@ export default function AdminDashboard({
             <Clock className="w-4 h-4 mr-2" />
             系統目前限定累計之 7 個早自修與下課時段（其餘上課、午休與放假日皆不計入）：
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-slate-300 font-mono">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-slate-300">
             {VALID_READING_INTERVALS.map((slot) => (
               <div
                 key={slot.name}
@@ -1008,7 +858,7 @@ export default function AdminDashboard({
                   value={currentHolidayDateString}
                   onChange={handleNativeDateChange}
                   style={{ colorScheme: "dark" }}
-                  className="bg-slate-900 border-2 border-amber-700/60 hover:border-amber-500 rounded-xl px-3 py-2 text-amber-200 text-xs font-mono cursor-pointer focus:outline-none focus:border-amber-400 shadow-inner"
+                  className="bg-slate-900 border-2 border-amber-700/60 hover:border-amber-500 rounded-xl px-3 py-2 text-amber-200 text-xs cursor-pointer focus:outline-none focus:border-amber-400 shadow-inner"
                   title="點擊此處亦可開啟日曆挑選"
                 />
               </div>
@@ -1018,7 +868,7 @@ export default function AdminDashboard({
             <div className="mt-2 text-xs text-amber-200/90 flex flex-wrap items-center gap-2">
               <span>
                 已選擇：
-                <strong className="text-amber-400 font-mono text-sm ml-1">
+                <strong className="text-amber-400 text-sm ml-1 font-bold">
                   {currentHolidayDateString} ({selectedWeekday})
                 </strong>
               </span>
@@ -1064,7 +914,7 @@ export default function AdminDashboard({
                   className="bg-black/40 rounded-xl px-4 py-2.5 border border-amber-900/30 flex items-center justify-between gap-3 text-sm hover:border-amber-700/50 transition-colors"
                 >
                   <div className="flex items-center gap-3">
-                    <span className="font-mono text-amber-300 font-bold">
+                    <span className="text-amber-300 font-bold">
                       {formatHolidayDate(h.date)}
                     </span>
                     {h.name && (
@@ -1081,282 +931,6 @@ export default function AdminDashboard({
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
-                </div>
-              ))
-          )}
-        </div>
-      </div>
-
-      {/* 9/17 ~ 9/23 借閱修練時長審計與魔力加點校正 */}
-      <div className="glass-panel border border-amber-500/50 rounded-3xl p-6 sm:p-8 mb-8 shadow-[0_10px_35px_rgba(217,119,6,0.25)] bg-gradient-to-br from-amber-950/30 via-slate-900/90 to-slate-950">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
-          <div>
-            <h3 className="text-xl sm:text-2xl font-black text-amber-400 flex items-center tracking-wider drop-shadow-sm">
-              <Sparkles className="w-6 h-6 mr-3 text-amber-400 animate-pulse" />
-              9/17 ~ 9/23 借閱時長審計與魔力加點校正
-            </h3>
-            <p className="text-xs sm:text-sm text-amber-200/70 mt-1 font-medium leading-relaxed">
-              依據課堂限定規範（排除上課、午休、週末與假日），嚴格檢核指定區間之所有借閱紀錄。凡達 30 分鐘以上且尚未獲得加點者，可一鍵補發魔力點數並校正紀錄時長。
-            </p>
-          </div>
-
-          <button
-            type="button"
-            onClick={handleExecuteAuditAndReward}
-            disabled={isAuditing || auditAnalysis.needsRewardCount === 0}
-            className={`px-6 py-3.5 rounded-2xl border font-black text-sm sm:text-base flex items-center justify-center shrink-0 transition-all shadow-[0_5px_20px_rgba(217,119,6,0.35)] ${
-              auditAnalysis.needsRewardCount > 0 && !isAuditing
-                ? "bg-gradient-to-r from-amber-600 via-amber-500 to-amber-600 hover:from-amber-500 hover:to-amber-400 text-slate-950 border-amber-300 hover:scale-105 cursor-pointer"
-                : "bg-slate-800/80 text-slate-500 border-slate-700 cursor-not-allowed opacity-60"
-            }`}
-            title={
-              auditAnalysis.needsRewardCount === 0
-                ? "目前無待補發魔力之達標學徒"
-                : "立即為待補發學徒發放魔力點數並更新資料庫"
-            }
-          >
-            {isAuditing ? (
-              <>
-                <LoaderCircle className="w-5 h-5 mr-2 animate-spin text-amber-950" />
-                正在校正魔力與時長...
-              </>
-            ) : (
-              <>
-                <Sparkles className="w-5 h-5 mr-2" />
-                一鍵校正並補發魔力 ({auditAnalysis.needsRewardCount} 筆待補發)
-              </>
-            )}
-          </button>
-        </div>
-
-        {/* 狀態反饋提示橫幅 */}
-        {auditFeedback && (
-          <div
-            className={`p-4 rounded-2xl mb-6 border flex items-center gap-3 text-sm font-bold ${
-              auditFeedback.type === "success"
-                ? "bg-emerald-950/60 border-emerald-500/60 text-emerald-300"
-                : "bg-rose-950/60 border-rose-500/60 text-rose-300"
-            }`}
-          >
-            {auditFeedback.type === "success" ? (
-              <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
-            ) : (
-              <AlertCircle className="w-5 h-5 text-rose-400 shrink-0" />
-            )}
-            <span>{auditFeedback.message}</span>
-          </div>
-        )}
-
-        {/* 統計指標卡片 */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-6">
-          <div className="bg-black/40 border border-amber-900/40 rounded-2xl p-4 flex flex-col justify-between">
-            <span className="text-xs font-bold text-amber-200/70">
-              區間內借閱總紀錄
-            </span>
-            <div className="mt-2 flex items-baseline gap-2">
-              <span className="text-2xl sm:text-3xl font-black font-mono text-slate-100">
-                {auditAnalysis.totalCount}
-              </span>
-              <span className="text-xs text-slate-400">筆</span>
-            </div>
-          </div>
-
-          <div className="bg-black/40 border border-emerald-900/40 rounded-2xl p-4 flex flex-col justify-between">
-            <span className="text-xs font-bold text-emerald-300/80">
-              達 30 分鐘以上達標筆數
-            </span>
-            <div className="mt-2 flex items-baseline gap-2">
-              <span className="text-2xl sm:text-3xl font-black font-mono text-emerald-400">
-                {auditAnalysis.qualifyingCount}
-              </span>
-              <span className="text-xs text-emerald-300/60">筆達標</span>
-            </div>
-          </div>
-
-          <div className="bg-black/40 border border-amber-600/50 rounded-2xl p-4 flex flex-col justify-between bg-gradient-to-br from-amber-950/40 to-transparent">
-            <span className="text-xs font-bold text-amber-300">
-              待補發魔力點數
-            </span>
-            <div className="mt-2 flex items-baseline gap-2">
-              <span className="text-2xl sm:text-3xl font-black font-mono text-amber-400">
-                +{auditAnalysis.totalPointsToAward}
-              </span>
-              <span className="text-xs text-amber-300/80">
-                點 ({auditAnalysis.pendingStudentsCount} 位學徒)
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* 區間設定與篩選條件 */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 pb-4 border-b border-amber-900/30">
-          <div className="flex flex-wrap items-center gap-2 text-xs">
-            <span className="font-bold text-amber-300">審計日期區間：</span>
-            <input
-              type="date"
-              value={auditStartDate}
-              onChange={(e) => setAuditStartDate(e.target.value)}
-              style={{ colorScheme: "dark" }}
-              className="bg-slate-900 border border-amber-700/60 rounded-xl px-2.5 py-1.5 text-amber-200 font-mono text-xs focus:outline-none focus:border-amber-400"
-            />
-            <span className="text-slate-500">至</span>
-            <input
-              type="date"
-              value={auditEndDate}
-              onChange={(e) => setAuditEndDate(e.target.value)}
-              style={{ colorScheme: "dark" }}
-              className="bg-slate-900 border border-amber-700/60 rounded-xl px-2.5 py-1.5 text-amber-200 font-mono text-xs focus:outline-none focus:border-amber-400"
-            />
-            <button
-              type="button"
-              onClick={() => {
-                setAuditStartDate("2026-09-17");
-                setAuditEndDate("2026-09-23");
-              }}
-              className="px-2.5 py-1 bg-amber-950/60 hover:bg-amber-900 text-amber-300 border border-amber-700/50 rounded-lg text-[11px] font-bold transition-all"
-            >
-              重設 9/17~9/23
-            </button>
-          </div>
-
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
-            <button
-              type="button"
-              onClick={() => setAuditFilter("all")}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 ${
-                auditFilter === "all"
-                  ? "bg-amber-500 text-slate-950 shadow"
-                  : "bg-slate-900/80 text-slate-300 hover:bg-slate-800"
-              }`}
-            >
-              全部 ({auditAnalysis.totalCount})
-            </button>
-            <button
-              type="button"
-              onClick={() => setAuditFilter("needsReward")}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 ${
-                auditFilter === "needsReward"
-                  ? "bg-amber-500 text-slate-950 shadow"
-                  : "bg-slate-900/80 text-amber-300 hover:bg-slate-800"
-              }`}
-            >
-              待補發 ({auditAnalysis.needsRewardCount})
-            </button>
-            <button
-              type="button"
-              onClick={() => setAuditFilter("rewarded")}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 ${
-                auditFilter === "rewarded"
-                  ? "bg-emerald-600 text-white shadow"
-                  : "bg-slate-900/80 text-emerald-400 hover:bg-slate-800"
-              }`}
-            >
-              已獲加點 ({auditAnalysis.qualifyingCount - auditAnalysis.needsRewardCount})
-            </button>
-            <button
-              type="button"
-              onClick={() => setAuditFilter("notQualifying")}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 ${
-                auditFilter === "notQualifying"
-                  ? "bg-slate-700 text-white shadow"
-                  : "bg-slate-900/80 text-slate-400 hover:bg-slate-800"
-              }`}
-            >
-              未達標 ({auditAnalysis.totalCount - auditAnalysis.qualifyingCount})
-            </button>
-          </div>
-        </div>
-
-        {/* 紀錄明細列表 */}
-        <div className="space-y-2.5 max-h-80 overflow-y-auto pr-1.5 custom-scrollbar">
-          {auditAnalysis.items.filter((item) => {
-            if (auditFilter === "needsReward") return item.needsReward;
-            if (auditFilter === "rewarded") return item.isQualifying && !item.needsReward;
-            if (auditFilter === "notQualifying") return !item.isQualifying;
-            return true;
-          }).length === 0 ? (
-            <p className="text-slate-500 text-xs sm:text-sm text-center py-8 italic bg-black/20 rounded-2xl border border-dashed border-slate-800">
-              在此篩選條件下沒有任何借閱紀錄。
-            </p>
-          ) : (
-            auditAnalysis.items
-              .filter((item) => {
-                if (auditFilter === "needsReward") return item.needsReward;
-                if (auditFilter === "rewarded") return item.isQualifying && !item.needsReward;
-                if (auditFilter === "notQualifying") return !item.isQualifying;
-                return true;
-              })
-              .map((item) => (
-                <div
-                  key={item.recordId}
-                  className={`bg-black/40 rounded-2xl p-3.5 sm:p-4 border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
-                    item.needsReward
-                      ? "border-amber-500/60 bg-gradient-to-r from-amber-950/40 to-black/40"
-                      : item.isQualifying
-                      ? "border-emerald-800/40 hover:border-emerald-700/60"
-                      : "border-slate-800/50 hover:border-slate-700/50"
-                  }`}
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-mono text-amber-300 font-bold text-xs sm:text-sm">
-                        {item.seatNumber ? `${item.seatNumber}號` : ""} {item.studentName}
-                      </span>
-                      <span className="text-slate-500 text-xs">|</span>
-                      <span className="font-bold text-slate-200 text-xs sm:text-sm truncate">
-                        📖 {item.bookTitle}
-                      </span>
-                    </div>
-
-                    <div className="text-[11px] sm:text-xs text-slate-400 mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 font-mono">
-                      <span>借出：{item.borrowDate}</span>
-                      <span>歸還：{item.returnDate}</span>
-                      {typeof item.currentDuration === "number" &&
-                        item.currentDuration !== item.validMinutes && (
-                          <span className="text-amber-400/70">
-                            (原記：{item.currentDuration}分)
-                          </span>
-                        )}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
-                    <div className="text-right">
-                      <div className="text-xs font-mono font-bold text-slate-300">
-                        有效修行：
-                        <span
-                          className={`text-sm ${
-                            item.validMinutes >= 30
-                              ? "text-emerald-400 font-black"
-                              : "text-amber-200/90"
-                          }`}
-                        >
-                          {item.validMinutes}
-                        </span>{" "}
-                        分鐘
-                      </div>
-                    </div>
-
-                    {item.needsReward ? (
-                      <span className="px-3 py-1 bg-amber-950 text-amber-300 border border-amber-500/80 rounded-xl text-xs font-bold shadow-[0_0_10px_rgba(245,158,11,0.3)] animate-pulse flex items-center">
-                        <Sparkles className="w-3.5 h-3.5 mr-1" />
-                        達標待補發 (+10)
-                      </span>
-                    ) : item.isQualifying ? (
-                      <span className="px-3 py-1 bg-emerald-950/70 text-emerald-300 border border-emerald-700/60 rounded-xl text-xs font-bold flex items-center">
-                        <CheckCircle2 className="w-3.5 h-3.5 mr-1 text-emerald-400" />
-                        達標已加點
-                      </span>
-                    ) : item.status === "active" ? (
-                      <span className="px-3 py-1 bg-sky-950/60 text-sky-300 border border-sky-700/50 rounded-xl text-xs font-bold">
-                        進行中 ({item.validMinutes}分)
-                      </span>
-                    ) : (
-                      <span className="px-3 py-1 bg-slate-900/80 text-slate-400 border border-slate-700/50 rounded-xl text-xs font-bold">
-                        未達 30 分鐘
-                      </span>
-                    )}
-                  </div>
                 </div>
               ))
           )}

@@ -401,9 +401,7 @@ export default function App() {
               books={books}
               students={students}
               categories={categories}
-              records={records}
               holidays={holidays}
-              onAuditAndRewardRecords={handleAuditAndRewardRecords}
               onAddBookClick={() => setIsAddBookOpen(true)}
               onEditBookClick={(book) => setEditingBook(book)}
               onDeleteBook={handleDeleteBook}
