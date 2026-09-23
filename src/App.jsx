@@ -131,10 +131,10 @@ export default function App() {
     }
   };
 
-  // 歸還書籍（傳入 holidays 以排除假日與課堂時段計算）
+  // 歸還書籍（傳入 records, students, holidays 以排除假日與課堂時段計算並獎勵魔力）
   const handleReturnBook = async (bookId, studentId) => {
     try {
-      await returnBook(bookId, studentId, holidays);
+      await returnBook(bookId, studentId, records, students, holidays);
     } catch (err) {
       console.error("歸還書籍失敗:", err);
       alert("歸還失敗，請稍後再試。");
@@ -185,7 +185,7 @@ export default function App() {
     }
     if (window.confirm(`確定要永久刪除「${book.title}」嗎？`)) {
       try {
-        await deleteBook(book.id);
+        await deleteBook(book);
       } catch (err) {
         console.error("刪除書籍失敗:", err);
         alert("刪除書籍失敗。");
@@ -224,7 +224,7 @@ export default function App() {
 
   const handleRenameCategory = async (catId, oldName, newName) => {
     try {
-      await renameCategory(catId, oldName, newName, categories, books);
+      await renameCategory(catId, oldName, newName, books, categories);
     } catch (err) {
       console.error("類別改名失敗:", err);
       alert("類別改名失敗。");
@@ -239,7 +239,7 @@ export default function App() {
     }
     if (window.confirm(`確定要刪除類別「${cat.name}」嗎？`)) {
       try {
-        await deleteCategory(cat.id);
+        await deleteCategory(cat.id, cat.name, books);
       } catch (err) {
         console.error("刪除類別失敗:", err);
         alert("刪除類別失敗。");
@@ -272,7 +272,7 @@ export default function App() {
   const handleDeleteStudent = async (studentId) => {
     if (window.confirm("確定要將這位學徒從名冊中除名嗎？")) {
       try {
-        await deleteStudent(studentId, records, books, holidays);
+        await deleteStudent(studentId, books, records, holidays);
       } catch (err) {
         console.error("除名學徒失敗:", err);
         alert("除名失敗。");
@@ -303,7 +303,7 @@ export default function App() {
   const handleConfirmReset = async () => {
     setIsResetting(true);
     try {
-      await resetAllData(records, students, books);
+      await resetAllData(books, students, records);
       setIsResetModalOpen(false);
       alert("已成功釋放禁忌魔法，完成學期重置。");
     } catch (err) {

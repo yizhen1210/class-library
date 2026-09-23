@@ -5,7 +5,9 @@ import {
   getDocs,
   setDoc,
   deleteDoc,
-  onSnapshot
+  onSnapshot,
+  query,
+  where
 } from "firebase/firestore";
 import { signInWithPopup, signOut } from "firebase/auth";
 import { db, auth, googleProvider } from "./firebase";
@@ -174,35 +176,132 @@ export function getAccumulatedReadingMinutes(studentId, bookId, records, holiday
 
 /**
  * 歸還書籍（完成修行，滿 30 分鐘獎勵 10 點魔力，僅計入指定下課/早自修時段）
+ * 支援多種調用傳參形式：
+ * 1. (bookId, studentId, records, students, holidays)
+ * 2. (bookId, studentId, books, students, records, holidays)
+ * 3. (bookId, studentId, holidays)
  */
-export async function returnBook(bookId, studentId, books, students, records, holidays = []) {
-  const now = getCurrentDateTimeString();
-  const activeRecord = records.find(r => r.bookId === bookId && r.status === "active");
-  const student = students.find(s => s.id === studentId);
+export async function returnBook(bookId, studentId, arg3, arg4, arg5, arg6) {
+  let records = [];
+  let students = [];
+  let holidays = [];
 
-  const duration = activeRecord ? calculateValidReadingMinutes(activeRecord.borrowDate, now, holidays) : 0;
-  const previousMinutes = getAccumulatedReadingMinutes(studentId, bookId, records, holidays);
+  if (Array.isArray(arg5)) {
+    // 6 參數模式: (bookId, studentId, books, students, records, holidays)
+    students = Array.isArray(arg4) ? arg4 : [];
+    records = Array.isArray(arg5) ? arg5 : [];
+    holidays = Array.isArray(arg6) ? arg6 : [];
+  } else if (Array.isArray(arg3) && Array.isArray(arg4)) {
+    // 5 參數模式: (bookId, studentId, records, students, holidays)
+    records = Array.isArray(arg3) ? arg3 : [];
+    students = Array.isArray(arg4) ? arg4 : [];
+    holidays = Array.isArray(arg5) ? arg5 : [];
+  } else if (Array.isArray(arg3)) {
+    // 3 參數模式: (bookId, studentId, holidays)
+    holidays = arg3;
+  }
+
+  const now = getCurrentDateTimeString();
+
+  // 1. 尋找進行中的借閱紀錄 (activeRecord)
+  let activeRecord =
+    records.find((r) => r.bookId === bookId && r.studentId === studentId && r.status === "active") ||
+    records.find((r) => r.bookId === bookId && r.status === "active");
+
+  // 若記憶體中未找到，從 Firestore 線上查詢
+  if (!activeRecord) {
+    try {
+      const q = query(
+        getRecordsCol(),
+        where("bookId", "==", bookId),
+        where("status", "==", "active")
+      );
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        const docMatch =
+          snap.docs.find((d) => d.data().studentId === studentId) || snap.docs[0];
+        activeRecord = { id: docMatch.id, ...docMatch.data() };
+      }
+    } catch (err) {
+      console.warn("Firestore 查詢 activeRecord 警示:", err);
+    }
+  }
+
+  // 2. 尋找學徒資料 (student)
+  let student = students.find((s) => s.id === studentId);
+  if (!student && studentId) {
+    try {
+      const sDoc = await getDoc(doc(getStudentsCol(), studentId));
+      if (sDoc.exists()) {
+        student = { id: sDoc.id, ...sDoc.data() };
+      }
+    } catch (err) {
+      console.warn("Firestore 查詢 student 警示:", err);
+    }
+  }
+
+  // 3. 計算有效借閱修練時長（排除放假日與非下課/早自修時段）
+  const duration = activeRecord
+    ? calculateValidReadingMinutes(activeRecord.borrowDate, now, holidays)
+    : 0;
+
+  // 4. 計算過去累計閱讀時長
+  let previousMinutes = 0;
+  if (records.length > 0) {
+    previousMinutes = getAccumulatedReadingMinutes(studentId, bookId, records, holidays);
+  } else if (studentId) {
+    try {
+      const q = query(
+        getRecordsCol(),
+        where("studentId", "==", studentId),
+        where("bookId", "==", bookId),
+        where("status", "==", "returned")
+      );
+      const snap = await getDocs(q);
+      const histRecords = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      previousMinutes = getAccumulatedReadingMinutes(studentId, bookId, histRecords, holidays);
+    } catch (err) {
+      console.warn("Firestore 查詢歷史借閱紀錄警示:", err);
+    }
+  }
+
   const totalMinutes = previousMinutes + duration;
-  const shouldReward = previousMinutes <= DURATION_THRESHOLD_MINUTES && totalMinutes > DURATION_THRESHOLD_MINUTES;
+  const shouldReward =
+    previousMinutes <= DURATION_THRESHOLD_MINUTES &&
+    totalMinutes > DURATION_THRESHOLD_MINUTES;
 
   const promises = [];
 
+  // 更新借閱紀錄為已歸還
   if (activeRecord) {
     const recordRef = doc(getRecordsCol(), activeRecord.id);
     promises.push(
-      setDoc(recordRef, { returnDate: now, status: "returned", durationMinutes: duration }, { merge: true })
+      setDoc(
+        recordRef,
+        { returnDate: now, status: "returned", durationMinutes: duration },
+        { merge: true }
+      )
     );
   }
 
+  // 更新書籍狀態為可借閱
   const bookRef = doc(getBooksCol(), bookId);
   promises.push(
     setDoc(bookRef, { status: "available", borrowerId: null }, { merge: true })
   );
 
+  // 若修行滿 30 分鐘獎勵 10 點魔力
   if (student && shouldReward) {
     const studentRef = doc(getStudentsCol(), studentId);
     promises.push(
-      setDoc(studentRef, { magicPoints: Number(student.magicPoints || 0) + MAGIC_POINTS_REWARD }, { merge: true })
+      setDoc(
+        studentRef,
+        {
+          magicPoints:
+            Number(student.magicPoints || 0) + MAGIC_POINTS_REWARD
+        },
+        { merge: true }
+      )
     );
   }
 
@@ -310,11 +409,13 @@ export async function updateBook(book) {
 /**
  * 刪除書籍
  */
-export async function deleteBook(book) {
-  if (book.status === "borrowed") {
+export async function deleteBook(bookOrId) {
+  const bookId = typeof bookOrId === "object" && bookOrId !== null ? bookOrId.id : bookOrId;
+  if (!bookId) return;
+  if (typeof bookOrId === "object" && bookOrId !== null && bookOrId.status === "borrowed") {
     throw new Error("這本書正被借走，請先歸還再刪除。");
   }
-  await deleteDoc(doc(getBooksCol(), book.id));
+  await deleteDoc(doc(getBooksCol(), bookId));
 }
 
 /**
@@ -364,19 +465,36 @@ export async function addCategory(name, existingCategories) {
 /**
  * 編輯分類名稱（連帶更新所有已歸類書籍）
  */
-export async function renameCategory(categoryId, oldName, newName, books, existingCategories) {
+export async function renameCategory(categoryId, oldName, newName, arg4 = [], arg5 = []) {
   const trimmed = newName.trim();
   if (!trimmed || trimmed === oldName) return;
-  if (existingCategories.some(c => c.name === trimmed)) {
+
+  // 智慧辨識 arg4 和 arg5 哪一個是 books 哪一個是 existingCategories
+  let books = [];
+  let existingCategories = [];
+  if (Array.isArray(arg4) && arg4.length > 0 && arg4[0].category !== undefined) {
+    books = arg4;
+    existingCategories = Array.isArray(arg5) ? arg5 : [];
+  } else if (Array.isArray(arg5) && arg5.length > 0 && arg5[0].category !== undefined) {
+    books = arg5;
+    existingCategories = Array.isArray(arg4) ? arg4 : [];
+  } else {
+    existingCategories = Array.isArray(arg4) ? arg4 : [];
+    books = Array.isArray(arg5) ? arg5 : [];
+  }
+
+  if (existingCategories.some((c) => c.name === trimmed)) {
     throw new Error("已經有同名的類別了。");
   }
 
   await setDoc(doc(getCategoriesCol(), categoryId), { name: trimmed }, { merge: true });
 
-  const matchingBooks = books.filter(b => b.category === oldName);
+  const matchingBooks = books.filter((b) => b.category === oldName);
   const booksCol = getBooksCol();
   await Promise.all(
-    matchingBooks.map(b => setDoc(doc(booksCol, b.id), { category: trimmed }, { merge: true }))
+    matchingBooks.map((b) =>
+      setDoc(doc(booksCol, b.id), { category: trimmed }, { merge: true })
+    )
   );
 }
 
@@ -384,9 +502,13 @@ export async function renameCategory(categoryId, oldName, newName, books, existi
  * 刪除分類（若分類下尚有書籍則禁止刪除）
  */
 export async function deleteCategory(categoryId, categoryName, books) {
-  const bookCount = books.filter(b => b.category === categoryName).length;
-  if (bookCount > 0) {
-    throw new Error(`「${categoryName}」底下還有 ${bookCount} 本書，請先把這些書改分類或刪除，才能刪除此類別。`);
+  if (categoryName && Array.isArray(books)) {
+    const bookCount = books.filter((b) => b.category === categoryName).length;
+    if (bookCount > 0) {
+      throw new Error(
+        `「${categoryName}」底下還有 ${bookCount} 本書，請先把這些書改分類或刪除，才能刪除此類別。`
+      );
+    }
   }
   await deleteDoc(doc(getCategoriesCol(), categoryId));
 }
@@ -422,20 +544,36 @@ export async function updateStudentField(studentId, field, value) {
 /**
  * 刪除學徒（並自動結算其進行中的借閱）
  */
-export async function deleteStudent(studentId, books, records, holidays = []) {
+export async function deleteStudent(studentId, arg2 = [], arg3 = [], holidays = []) {
   const now = getCurrentDateTimeString();
-  const activeRecords = records.filter(r => r.studentId === studentId && r.status === "active");
-  const borrowedBooks = books.filter(b => b.borrowerId === studentId);
+
+  // 智慧辨識 arg2 與 arg3 哪一個是 books 哪一個是 records
+  let books = [];
+  let records = [];
+  if (Array.isArray(arg2) && arg2.length > 0 && (arg2[0].borrowDate || arg2[0].status === "active" || arg2[0].status === "returned")) {
+    records = arg2;
+    books = Array.isArray(arg3) ? arg3 : [];
+  } else {
+    books = Array.isArray(arg2) ? arg2 : [];
+    records = Array.isArray(arg3) ? arg3 : [];
+  }
+
+  const activeRecords = records.filter((r) => r.studentId === studentId && r.status === "active");
+  const borrowedBooks = books.filter((b) => b.borrowerId === studentId);
 
   const promises = [
-    ...activeRecords.map(r =>
+    ...activeRecords.map((r) =>
       setDoc(
         doc(getRecordsCol(), r.id),
-        { status: "returned", returnDate: now, durationMinutes: calculateValidReadingMinutes(r.borrowDate, now, holidays) },
+        {
+          status: "returned",
+          returnDate: now,
+          durationMinutes: calculateValidReadingMinutes(r.borrowDate, now, holidays)
+        },
         { merge: true }
       )
     ),
-    ...borrowedBooks.map(b =>
+    ...borrowedBooks.map((b) =>
       setDoc(doc(getBooksCol(), b.id), { status: "available", borrowerId: null }, { merge: true })
     ),
     deleteDoc(doc(getStudentsCol(), studentId))
@@ -490,18 +628,26 @@ export async function deleteHoliday(id) {
 /**
  * 禁忌魔法：重置所有資料（銷毀全部紀錄、學徒魔力值歸零、書籍全數歸還）
  */
-export async function resetAllData(books, students, records) {
+export async function resetAllData(arg1 = [], students = [], arg3 = []) {
   const recordsCol = getRecordsCol();
   const studentsCol = getStudentsCol();
   const booksCol = getBooksCol();
 
-  const deleteRecordPromises = records.map(r => deleteDoc(doc(recordsCol, r.id)));
-  const resetStudentPromises = students
-    .filter(s => s.magicPoints !== 0)
-    .map(s => setDoc(doc(studentsCol, s.id), { magicPoints: 0 }, { merge: true }));
-  const resetBookPromises = books
-    .filter(b => b.status !== "available")
-    .map(b => setDoc(doc(booksCol, b.id), { status: "available", borrowerId: null }, { merge: true }));
+  // 智慧辨識 arg1 和 arg3 哪一個是 books 哪一個是 records
+  let books = arg1;
+  let records = arg3;
+  if (Array.isArray(arg1) && arg1.length > 0 && (arg1[0].borrowDate || arg1[0].bookId)) {
+    records = arg1;
+    books = Array.isArray(arg3) ? arg3 : [];
+  }
+
+  const deleteRecordPromises = (records || []).map((r) => deleteDoc(doc(recordsCol, r.id)));
+  const resetStudentPromises = (students || [])
+    .filter((s) => s.magicPoints !== 0)
+    .map((s) => setDoc(doc(studentsCol, s.id), { magicPoints: 0 }, { merge: true }));
+  const resetBookPromises = (books || [])
+    .filter((b) => b.status !== "available")
+    .map((b) => setDoc(doc(booksCol, b.id), { status: "available", borrowerId: null }, { merge: true }));
 
   await Promise.all([
     ...deleteRecordPromises,
